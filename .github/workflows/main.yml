@@ -1,0 +1,46 @@
+name: Windows-RDP
+
+on: 
+  workflow_dispatch: # Cho phép kích hoạt chạy RDP thủ công bằng tay
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360 # Giới hạn tối đa 6 tiếng cho mỗi phiên chạy
+
+    steps:
+    - name: Tải và Giải nén Ngrok
+      run: |
+        Invoke-WebRequest https://equinox.io -OutFile ngrok.zip
+        Expand-Archive ngrok.zip
+        
+    - name: Xác thực tài khoản Ngrok
+      run: |
+        .\ngrok\ngrok.exe config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+        
+    - name: Kích hoạt tính năng Remote Desktop trên Windows
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+        
+    - name: Thiết lập Tài khoản đăng nhập
+      run: |
+        $Password = ConvertTo-SecureString "${{ secrets.USER_PASSWORD }}" -AsPlainText -Force
+        New-LocalUser "runneradmin" -Password $Password -Description "RDP Admin"
+        Add-LocalGroupMember -Group "Administrators" -Member "runneradmin"
+        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
+        
+    - name: Khởi tạo Tunnel kết nối đường truyền RDP
+      run: |
+        Start-Process .\ngrok\ngrok.exe -ArgumentList "tcp 3389"
+        Write-Host "Vui lòng kiểm tra địa chỉ IP kết nối tại Dashboard của Ngrok"
+        
+    - name: Duy trì kết nối live (Vòng lặp chạy ngầm)
+      run: |
+        $count = 0
+        while ($count -lt 360) {
+            Start-Sleep -Seconds 60
+            $count++
+            Write-Host "Đang giữ phiên RDP hoạt động... Phút thứ: $count"
+        }
