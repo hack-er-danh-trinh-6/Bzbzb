@@ -5,19 +5,15 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest # Chạy trên môi trường Ubuntu mới nhất (24.04)
+    runs-on: ubuntu-latest
     timeout-minutes: 360 
 
     steps:
-    - name: Cài đặt Ngrok bằng Snap (Sửa lỗi giải nén)
+    - name: Cài đặt Ngrok bằng Snap
       run: |
         sudo snap install ngrok
         
-    - name: Xác thực tài khoản Ngrok
-      run: |
-        ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-        
-    - name: Cài đặt Môi trường đồ họa nhẹ và XRDP
+    - name: Kích hoạt tính năng Remote Desktop trên Ubuntu
       run: |
         sudo apt update
         # Tự động đồng ý cài đặt giao diện XFCE4 và công cụ điều khiển XRDP
@@ -31,11 +27,11 @@ jobs:
         # Đặt mật khẩu của tài khoản 'runner' mặc định thành 'RdpPassword2026!'
         echo "runner:RdpPassword2026!" | sudo chpasswd
         
-    - name: Khởi tạo và Duy trì đường truyền RDP trên Ubuntu
+    - name: Khởi tạo và Duy trì đường truyền RDP trên Ubuntu (Sửa lỗi quyền)
       run: |
         echo "------------------------------------------------------------"
         echo "Đang kích hoạt đường hầm RDP công khai cho Ubuntu..."
         echo "Vui lòng lấy IP kết nối mới tại: https://ngrok.com"
         echo "------------------------------------------------------------"
-        # Mở cổng kết nối đồ họa 3389 qua ngrok
-        ngrok tcp 3389
+        # Truyền trực tiếp Token xác thực vào lệnh khởi chạy để bỏ qua bước lưu file cấu hình bị lỗi quyền
+        sudo ngrok tcp 3389 --authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
