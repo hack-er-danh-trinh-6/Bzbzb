@@ -5,7 +5,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest # Chuyển sang Linux để hệ thống siêu nhẹ và tiết kiệm RAM
+    runs-on: ubuntu-latest
     timeout-minutes: 360 
 
     steps:
@@ -13,21 +13,18 @@ jobs:
       run: |
         sudo snap install ngrok
         
-    - name: Tải và cấu hình Giao diện điều khiển Stream (Owncast)
+    - name: Khởi chạy Giao diện điều khiển Stream (Owncast Docker)
       run: |
-        # Tải bộ công cụ phát trực tuyến có giao diện Web quản lý siêu nhẹ
-        curl -s https://owncast.online | bash
+        # Tạo thư mục lưu trữ dữ liệu cấu hình luồng phát
+        mkdir -p data
+        # Khởi chạy Owncast Web UI thông qua Docker container trên cổng 8080
+        docker run -d -p 8080:8080 --name stream-ui -v $(pwd)/data:/app/data owncast/owncast:latest
         
-    - name: Khởi chạy giao diện điều khiển ngầm
-      run: |
-        # Chạy Owncast trên cổng 8080 của máy ảo
-        cd owncast && ./owncast &
-        
-    - name: Kích hoạt đường hầm Web Panel công khai (Sửa lỗi quyền)
+    - name: Kích hoạt đường hầm Web Panel công khai
       run: |
         echo "------------------------------------------------------------"
         echo "Hệ thống đang khởi tạo Giao diện điều khiển Web..."
         echo "Vui lòng truy cập https://ngrok.com để lấy link Web"
         echo "------------------------------------------------------------"
-        # Mở cổng giao diện Web 8080 thông qua Ngrok có add thẻ của bạn
+        # Bỏ qua bước lưu file cấu hình bằng cách truyền trực tiếp token xác thực vào ngrok
         sudo ngrok http 8080 --authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
