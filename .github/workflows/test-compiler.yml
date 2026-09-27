@@ -1,11 +1,10 @@
 name: Automated-DJI-Streaming-Pipeline
 
-# ĐÃ SỬA: Tự động chạy ngay khi bạn commit/push code lên kho lưu trữ mà không cần nút bấm
 on:
   push:
     branches:
-      - '**'  # Chạy trên mọi nhánh khi có thay đổi code
-  workflow_dispatch: # Giữ lại để hiển thị nút bấm sau khi đã lên nhánh chính
+      - '**'
+  workflow_dispatch:
 
 jobs:
   media-processing:
@@ -30,15 +29,13 @@ jobs:
     - name: Deploy Light RTMP Server
       run: |
         Write-Host "Setting up live broadcast pipeline ports..."
-        # Tạo sẵn hạ tầng kết nối cổng mạng nội bộ 1935 trên máy ảo Windows
         New-Item -ItemType Directory -Force -Path "C:\StreamingServer"
 
     - name: Inject Virtual Graphics Driver for OBS Studio
       run: |
         $obsBinPath = "C:\Program Files\obs-studio\bin\64bit"
         if (!(Test-Path $obsBinPath)) { New-Item -ItemType Directory -Force -Path $obsBinPath }
-        
-        $dllUrl = "https://githubusercontent.com"
+        $dllUrl = "https://raw.githubusercontent.com/alexis-mignon/mesa3d-wgl-builds/master/opengl32.dll"
         try {
             Invoke-WebRequest -Uri $dllUrl -OutFile "$obsBinPath\opengl32.dll" -TimeoutSec 60
             Write-Host "Virtual Graphics Driver integrated successfully."
@@ -48,26 +45,26 @@ jobs:
 
     - name: Create Multi-Tunnel Configuration File
       run: |
-        $config = @"
-        version: "3"
-        agent:
-          authtoken: "${{ secrets.NGROK_AUTH_TOKEN }}"
-        tunnels:
-          rdp-tunnel:
-            proto: tcp
-            addr: 3389
-            region: sg
-          rtmp-tunnel:
-            proto: tcp
-            addr: 1935
-            region: sg
-"@
-        Set-Content -Path "ngrok_config.yml" -Value $config
+        $lines = @(
+          'version: "3"',
+          'agent:',
+          '  authtoken: "${{ secrets.NGROK_AUTH_TOKEN }}"',
+          'tunnels:',
+          '  rdp-tunnel:',
+          '    proto: tcp',
+          '    addr: 3389',
+          '    region: sg',
+          '  rtmp-tunnel:',
+          '    proto: tcp',
+          '    addr: 1935',
+          '    region: sg'
+        )
+        $lines | Out-File -FilePath "ngrok_config.yml" -Encoding ascii
 
     - name: Start Network Services Gateway
       run: |
         echo "----------------------------------------------------------------------"
         echo "IP PUBLIC GATEWAY IS ACTIVE VIA SINGAPORE SERVER"
-        echo "Vui lòng mở Ngrok Dashboard để lấy địa chỉ IP kết nối."
+        echo "Vui long mo Ngrok Dashboard de lay dia chi IP ket noi."
         echo "----------------------------------------------------------------------"
         ngrok start --config ngrok_config.yml --all
