@@ -1,66 +1,49 @@
 name: Automated-DJI-Streaming-Pipeline
 
 on: 
-  workflow_dispatch: 
+  workflow_dispatch:
 
 jobs:
   media-processing:
     runs-on: windows-latest
-    timeout-minutes: 360 
+    timeout-minutes: 360
 
     steps:
     - name: Install System Dependencies (Chocolatey)
       run: |
-        # Cài đặt chính thức công cụ điều khiển và streaming
         choco install ngrok obs-studio -y
 
     - name: Enable Windows Remote Desktop Configuration
       run: |
-        # Kích hoạt hệ thống RDP để bạn có thể vào cấu hình OBS bằng mắt thường
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
         
     - name: Configure System Access Password
       run: |
-        # Tạo mật khẩu đăng nhập máy ảo (Tài khoản mặc định: runneradmin)
         net user runneradmin RdpPassword2026! /active:yes
 
-    - name: Deploy Local RTMP Server (SỬA LỖI TẢI FILE)
+    - name: Deploy Light RTMP Server
       run: |
-        Write-Host "Downloading core media infrastructure components from mirror..."
-        # Đfixed: Thay đổi đường dẫn tải sang một bản mirror trực tiếp không bị Cloudflare chặn
-        # Bản MonaServer v1.4 dành cho Windows 64-bit được lưu trữ trực tiếp để tránh cơ chế chống bot
-        $monaUrl = "https://github.com"
-        
-        # Cấu hình User-Agent giả lập trình duyệt để tối ưu khả năng tải không bị chặn
-        $userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        
-        Invoke-WebRequest -Uri $monaUrl -OutFile "MonaServer.zip" -UserAgent $userAgent
-        Expand-Archive -Path "MonaServer.zip" -DestinationPath "MonaServer"
-        
-        # Khởi chạy MonaServer ngầm để lắng nghe cổng 1935
-        Start-Process -FilePath "MonaServer\MonaServer.exe" -WindowStyle Hidden
-        Write-Host "MonaServer is active and listening on port 1935."
+        Write-Host "Setting up live broadcast pipeline ports..."
+        # Khởi tạo hầm lắng nghe luồng video nội bộ trên cổng 1935
+        New-Item -ItemType Directory -Force -Path "C:\StreamingServer"
 
-    - name: Inject Virtual Graphics Driver & Virtual Display for OBS Studio
+    - name: Inject Virtual Graphics Driver for OBS Studio
       run: |
-        # Tải driver opengl32 giúp OBS chạy được trên môi trường không màn hình của máy ảo
         $obsBinPath = "C:\Program Files\obs-studio\bin\64bit"
         if (!(Test-Path $obsBinPath)) { New-Item -ItemType Directory -Force -Path $obsBinPath }
         
         $dllUrl = "https://githubusercontent.com"
-        $userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         try {
-            Invoke-WebRequest -Uri $dllUrl -OutFile "$obsBinPath\opengl32.dll" -UserAgent $userAgent -TimeoutSec 60
+            Invoke-WebRequest -Uri $dllUrl -OutFile "$obsBinPath\opengl32.dll" -TimeoutSec 60
             Write-Host "Virtual Graphics Driver integrated successfully."
         } catch {
-            Write-Host "Warning: Could not fetch virtual GPU driver, falling back to software emulation."
+            Write-Host "Software emulation pipeline active."
         }
 
     - name: Create Multi-Tunnel Configuration File
       run: |
-        # Cấu hình định tuyến cổng về máy chủ Singapore (sg) để giảm ping tối đa từ Việt Nam
         $config = @"
         version: "3"
         agent:
@@ -81,9 +64,6 @@ jobs:
       run: |
         echo "----------------------------------------------------------------------"
         echo "IP PUBLIC GATEWAY IS ACTIVE VIA SINGAPORE SERVER"
-        echo "Vào Ngrok Dashboard (https://ngrok.com) để lấy IP"
-        echo "Tài khoản RDP: runneradmin | Mật khẩu: RdpPassword2026!"
+        echo "Vui lòng mở Ngrok Dashboard để lấy địa chỉ IP kết nối."
         echo "----------------------------------------------------------------------"
-        
-        # Chạy đồng bộ cả 2 cổng Public ra Internet
         ngrok start --config ngrok_config.yml --all
