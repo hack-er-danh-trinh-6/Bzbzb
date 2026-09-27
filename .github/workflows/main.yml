@@ -1,34 +1,39 @@
-name: Windows-RDP
+name: Ubuntu-Desktop-RDP
 
 on: 
   workflow_dispatch: 
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest # Chuyển sang Ubuntu phiên bản mới nhất
     timeout-minutes: 360 
 
     steps:
-    - name: Cài đặt Ngrok bằng Chocolatey
+    - name: Cài đặt Ngrok
       run: |
-        choco install ngrok -y
+        curl -s https://amazonaws.com | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+        echo "deb https://amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+        sudo apt update && sudo apt install ngrok -y
         
     - name: Xác thực tài khoản Ngrok
       run: |
         ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
         
-    - name: Kích hoạt tính năng Remote Desktop trên Windows
+    - name: Cài đặt Môi trường đồ họa và RDP cho Ubuntu
       run: |
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+        sudo apt update
+        # Cài đặt giao diện XFCE nhẹ và công cụ XRDP
+        sudo apt install xfce4 xfce4-goodies xrdp -y
+        # Cấu hình XRDP sử dụng giao diện XFCE vừa cài
+        echo xfce4-session > ~/.xsession
+        sudo systemctl restart xrdp
         
-    - name: Khởi tạo mật khẩu mới cho hệ thống (Bản sửa lỗi)
+    - name: Thiết lập Mật khẩu cho tài khoản hệ thống
       run: |
-        # Đặt trực tiếp mật khẩu mạnh, đáp ứng đầy đủ chính sách bảo mật Windows của GitHub
-        net user runneradmin RdpPassword2026! /active:yes
+        # Đổi mật khẩu của tài khoản 'runner' mặc định thành 'RdpPassword2026!'
+        echo "runner:RdpPassword2026!" | sudo chpasswd
         
-    - name: Khởi tạo và Duy trì đường truyền RDP
+    - name: Khởi tạo đường truyền RDP qua Ngrok
       run: |
-        Write-Host "Đang kích hoạt đường hầm kết nối Ngrok..."
+        Write-Host "Đang kích hoạt đường hầm RDP trên Ubuntu..."
         ngrok tcp 3389
