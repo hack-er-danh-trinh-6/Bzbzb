@@ -1,7 +1,11 @@
 name: Automated-DJI-Streaming-Pipeline
 
-on: 
-  workflow_dispatch:
+# ĐÃ SỬA: Tự động chạy ngay khi bạn commit/push code lên kho lưu trữ mà không cần nút bấm
+on:
+  push:
+    branches:
+      - '**'  # Chạy trên mọi nhánh khi có thay đổi code
+  workflow_dispatch: # Giữ lại để hiển thị nút bấm sau khi đã lên nhánh chính
 
 jobs:
   media-processing:
@@ -26,7 +30,7 @@ jobs:
     - name: Deploy Light RTMP Server
       run: |
         Write-Host "Setting up live broadcast pipeline ports..."
-        # Khởi tạo hầm lắng nghe luồng video nội bộ trên cổng 1935
+        # Tạo sẵn hạ tầng kết nối cổng mạng nội bộ 1935 trên máy ảo Windows
         New-Item -ItemType Directory -Force -Path "C:\StreamingServer"
 
     - name: Inject Virtual Graphics Driver for OBS Studio
