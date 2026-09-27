@@ -29,14 +29,15 @@ jobs:
         
     - name: Cài đặt Card đồ họa ảo (Mesa 3D OpenGL) cho OBS
       run: |
-        Write-Host "Đang tải và cấu hình Driver đồ họa ảo OpenGL..."
-        # Tải file driver opengl32.dll từ kho lưu trữ Mesa3D chính thức về máy
-        Invoke-WebRequest -Uri "https://github.com" -OutFile "mesa3d.7z"
-        choco install 7zip -y
-        & "C:\Program Files\7-Zip\7z.exe" x mesa3d.7z -o"mesa3d"
+        Write-Host "Đang tải Driver đồ họa ảo OpenGL chuẩn..."
+        # Tải trực tiếp file driver nhị phân opengl32.dll đã được giải nén sẵn từ bản phân phối tin cậy để tránh lỗi 7zip
+        New-Item -ItemType Directory -Force -Path "mesa3d"
+        Invoke-WebRequest -Uri "https://github.com" -OutFile "mesa3d\opengl32.dll"
         
-        # Copy file card đồ họa ảo opengl32.dll trực tiếp vào thư mục chạy của OBS Studio
-        Copy-Item "mesa3d\x64\opengl32.dll" -Destination "C:\Program Files\obs-studio\bin\64bit\"
+        # Tạo thư mục đích của OBS nếu chưa tồn tại và copy driver vào
+        $obsBinPath = "C:\Program Files\obs-studio\bin\64bit"
+        if (!(Test-Path $obsBinPath)) { New-Item -ItemType Directory -Force -Path $obsBinPath }
+        Copy-Item "mesa3d\opengl32.dll" -Destination "$obsBinPath\"
         Write-Host "Cài đặt Driver đồ họa ảo thành công!"
 
     - name: Khởi tạo Tunnel kết nối đường truyền RDP
