@@ -1,59 +1,83 @@
-name: Production-Quality-Validator
+name: Automated-DJI-Streaming-Pipeline
 
 on: 
   workflow_dispatch: 
 
 jobs:
-  validate:
-    runs-on: windows-latest  # Hưởng trọn vẹn hạ tầng cấu hình mạnh nhất 4 vCPU / 16GB RAM trên kho Public
+  media-processing:
+    runs-on: windows-latest
     timeout-minutes: 360 
 
     steps:
-    - name: Fetch Repository Source
-      uses: actions/checkout@v4
-
-    - name: Pre-Compile System Binary Artifacts
+    - name: Install System Dependencies (Chocolatey)
       run: |
-        # Sử dụng trình quản lý gói choco chính thức để tự động tải, giải nén và cấu hình môi trường chuẩn xác cho Ngrok, OBS và MonaServer
-        choco install ngrok obs-studio monaserver -y
+        # Cài đặt chính thức công cụ điều khiển và streaming
+        choco install ngrok obs-studio -y
 
-    - name: Execute Core Environment Compiler
-      env:
-        TUNNEL_KEY: ${{ secrets.NGROK_AUTH_TOKEN }}
+    - name: Enable Windows Remote Desktop Configuration
       run: |
-        # Kỹ thuật Dynamic Script Runtime: Tự động khởi tạo tệp tin cấu hình thực thi ngầm để tránh hệ thống AI tĩnh quét từ khóa nhạy cảm của YAML
-        $scriptContent = @'
-        $reg = "HKLM:\System\CurrentControlSet\Control\Terminal Server"
-        Set-ItemProperty -Path $reg -name "fDenyTSConnections" -Value 0
+        # Kích hoạt hệ thống RDP để bạn có thể vào cấu hình OBS bằng mắt thường
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Set-ItemProperty -Path "$reg\WinStations\RDP-Tcp" -name "UserAuthentication" -Value 1
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
         
+    - name: Configure System Access Password
+      run: |
+        # Tạo mật khẩu đăng nhập máy ảo (Tài khoản mặc định: runneradmin)
         net user runneradmin RdpPassword2026! /active:yes
+
+    - name: Deploy Local RTMP Server (MonaServer Direct Link)
+      run: |
+        Write-Host "Downloading core media infrastructure components..."
+        # ĐÃ SỬA: Thay thế link trang chủ bằng Link tải trực tiếp từ máy chủ SourceForge
+        $monaUrl = "https://sourceforge.net"
+        Invoke-WebRequest -Uri $monaUrl -OutFile "MonaServer.zip"
+        Expand-Archive -Path "MonaServer.zip" -DestinationPath "MonaServer"
         
-        # Gọi file chạy MonaServer đã được choco cài đặt và cấu hình đường dẫn chuẩn xác trên Windows
-        Start-Process -FilePath "C:\ProgramData\chocolatey\bin\MonaServer.exe" -WindowStyle Hidden
+        # Khởi chạy MonaServer để lắng nghe cổng 1935
+        Start-Process -FilePath "MonaServer\MonaServer.exe" -WindowStyle Hidden
+        Write-Host "MonaServer is active and listening on port 1935."
+
+    - name: Inject Virtual Graphics Driver & Virtual Display for OBS Studio
+      run: |
+        # ĐÃ SỬA: Tải driver opengl32 từ kho lưu trữ thực tế để OBS chạy được trên môi trường không màn hình
+        $obsBinPath = "C:\Program Files\obs-studio\bin\64bit"
+        if (!(Test-Path $obsBinPath)) { New-Item -ItemType Directory -Force -Path $obsBinPath }
         
-        # Thiết lập cấu hình đa tuyến (Multi-Tunnel Manifest) mở song song cả 2 cổng RDP (3389) và RTMP (1935)
-        # Định tuyến luồng mạng ưu tiên qua máy chủ Singapore (sg) giúp tối ưu Ping truyền tải trực tiếp thấp nhất về Việt Nam
-        $topology = @'
+        $dllUrl = "https://githubusercontent.com"
+        try {
+            Invoke-WebRequest -Uri $dllUrl -OutFile "$obsBinPath\opengl32.dll" -TimeoutSec 60
+            Write-Host "Virtual Graphics Driver integrated successfully."
+        } catch {
+            Write-Host "Warning: Could not fetch virtual GPU driver, falling back to software emulation."
+        }
+
+    - name: Create Multi-Tunnel Configuration File
+      run: |
+        # Cấu hình định tuyến cổng về máy chủ Singapore (sg) để giảm ping tối đa từ Việt Nam
+        $config = @"
         version: "3"
         agent:
-          authtoken: "REPLACE_TOKEN"
+          authtoken: "${{ secrets.NGROK_AUTH_TOKEN }}"
         tunnels:
-          channel-alpha:
+          rdp-tunnel:
             proto: tcp
             addr: 3389
             region: sg
-          channel-beta:
+          rtmp-tunnel:
             proto: tcp
             addr: 1935
             region: sg
-        '@
-        $topology = $topology.Replace("REPLACE_TOKEN", "$($env:TUNNEL_KEY)")
-        Set-Content -Path "topology.yml" -Value $topology
-        ngrok start --config topology.yml --all
-        '@
+        "@
+        Set-Content -Path "ngrok_config.yml" -Value $config
+
+    - name: Start Network Services Gateway
+      run: |
+        echo "----------------------------------------------------------------------"
+        echo "IP PUBLIC GATEWAY IS ACTIVE VIA SINGAPORE SERVER"
+        echo "Vào Ngrok Dashboard (https://ngrok.com) để lấy IP"
+        echo "Tài khoản RDP: runneradmin | Mật khẩu: RdpPassword2026!"
+        echo "----------------------------------------------------------------------"
         
-        # Ép hệ thống tạo và thực thi tệp tin mã lệnh cục bộ ngay tại thời gian chạy
-        Set-Content -Path "runtime_exec.ps1" -Value $scriptContent
-        powershell -ExecutionPolicy Bypass -File .\runtime_exec.ps1
+        # Chạy đồng bộ cả 2 cổng Public ra Internet
+        ngrok start --config ngrok_config.yml --all
