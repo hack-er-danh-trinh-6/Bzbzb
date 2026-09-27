@@ -35,7 +35,7 @@ jobs:
       run: |
         $obsBinPath = "C:\Program Files\obs-studio\bin\64bit"
         if (!(Test-Path $obsBinPath)) { New-Item -ItemType Directory -Force -Path $obsBinPath }
-        $dllUrl = "https://raw.githubusercontent.com/alexis-mignon/mesa3d-wgl-builds/master/opengl32.dll"
+        $dllUrl = "https://githubusercontent.com"
         try {
             Invoke-WebRequest -Uri $dllUrl -OutFile "$obsBinPath\opengl32.dll" -TimeoutSec 60
             Write-Host "Virtual Graphics Driver integrated successfully."
@@ -45,19 +45,19 @@ jobs:
 
     - name: Create Multi-Tunnel Configuration File
       run: |
+        # ĐÃ SỬA: Đưa thuộc tính 'region' về đúng phân cấp đại lý (agent) theo chuẩn Ngrok mới nhất
         $lines = @(
           'version: "3"',
           'agent:',
           '  authtoken: "${{ secrets.NGROK_AUTH_TOKEN }}"',
+          '  region: "sg"',
           'tunnels:',
           '  rdp-tunnel:',
           '    proto: tcp',
           '    addr: 3389',
-          '    region: sg',
           '  rtmp-tunnel:',
           '    proto: tcp',
-          '    addr: 1935',
-          '    region: sg'
+          '    addr: 1935'
         )
         $lines | Out-File -FilePath "ngrok_config.yml" -Encoding ascii
 
