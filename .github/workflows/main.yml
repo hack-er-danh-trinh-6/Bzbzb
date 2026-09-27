@@ -5,35 +5,40 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest # Chuyển sang Ubuntu phiên bản mới nhất
+    runs-on: ubuntu-latest # Chạy trên Ubuntu mới nhất
     timeout-minutes: 360 
 
     steps:
-    - name: Cài đặt Ngrok
+    - name: Cài đặt Ngrok (Bản sửa lỗi tương thích Ubuntu 24.04)
       run: |
-        curl -s https://amazonaws.com | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-        echo "deb https://amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-        sudo apt update && sudo apt install ngrok -y
+        # Tải trực tiếp gói cài đặt chính thức của Ngrok dành cho Linux AMD64
+        curl -sLX stable https://equinox.io -o ngrok.tgz
+        sudo tar -xzf ngrok.tgz -C /usr/local/bin
+        rm ngrok.tgz
         
     - name: Xác thực tài khoản Ngrok
       run: |
         ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
         
-    - name: Cài đặt Môi trường đồ họa và RDP cho Ubuntu
+    - name: Cài đặt Môi trường đồ họa nhẹ và XRDP
       run: |
         sudo apt update
-        # Cài đặt giao diện XFCE nhẹ và công cụ XRDP
-        sudo apt install xfce4 xfce4-goodies xrdp -y
-        # Cấu hình XRDP sử dụng giao diện XFCE vừa cài
+        # Tự động đồng ý cài đặt giao diện XFCE4 và công cụ điều khiển XRDP
+        sudo DEBIAN_FRONTEND=noninteractive apt install xfce4 xfce4-goodies xrdp -y
+        # Thiết lập cấu hình hệ thống nhận diện giao diện đồ họa khi đăng nhập
         echo xfce4-session > ~/.xsession
         sudo systemctl restart xrdp
         
-    - name: Thiết lập Mật khẩu cho tài khoản hệ thống
+    - name: Thiết lập Mật khẩu đăng nhập cho hệ thống
       run: |
-        # Đổi mật khẩu của tài khoản 'runner' mặc định thành 'RdpPassword2026!'
+        # Đặt mật khẩu của tài khoản 'runner' mặc định thành 'RdpPassword2026!'
         echo "runner:RdpPassword2026!" | sudo chpasswd
         
-    - name: Khởi tạo đường truyền RDP qua Ngrok
+    - name: Khởi tạo và Duy trì đường truyền RDP trên Ubuntu
       run: |
-        Write-Host "Đang kích hoạt đường hầm RDP trên Ubuntu..."
+        echo "------------------------------------------------------------"
+        echo "Đang kích hoạt đường hầm RDP công khai cho Ubuntu..."
+        echo "Vui lòng lấy IP kết nối mới tại: https://ngrok.com"
+        echo "------------------------------------------------------------"
+        # Mở cổng kết nối đồ họa 3389 qua ngrok
         ngrok tcp 3389
