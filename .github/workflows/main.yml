@@ -1,12 +1,12 @@
 name: Windows-RDP
 
 on: 
-  workflow_dispatch: # Cho phép bạn chủ động bấm nút kích hoạt chạy RDP thủ công bằng tay
+  workflow_dispatch: 
 
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 360 # Giới hạn tối đa 6 tiếng (360 phút) cho mỗi phiên chạy theo quy định của GitHub
+    timeout-minutes: 360 
 
     steps:
     - name: Cài đặt Ngrok bằng Chocolatey
@@ -23,12 +23,12 @@ jobs:
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
         
-    - name: Thiết lập Tài khoản đăng nhập RDP
+    - name: Cập nhật mật khẩu tài khoản Admin hệ thống
       run: |
-        $Password = ConvertTo-SecureString "${{ secrets.USER_PASSWORD }}" -AsPlainText -Force
-        New-LocalUser "runneradmin" -Password $Password -Description "RDP Admin"
-        Add-LocalGroupMember -Group "Administrators" -Member "runneradmin"
-        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
+        $Password = ConvertTo-SecureString "RdpPassword2026!" -AsPlainText -Force
+        # Đặt lại mật khẩu cho tài khoản có sẵn và kích hoạt quyền hạn RDP
+        Set-LocalUser -Name "runneradmin" -Password $Password
+        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin" -ErrorAction SilentlyContinue
         
     - name: Khởi tạo Tunnel kết nối đường truyền RDP
       run: |
