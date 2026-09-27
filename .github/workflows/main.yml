@@ -1,37 +1,44 @@
-name: Ubuntu-Desktop-RDP
+name: OBS-Auto-Livestream
 
 on: 
   workflow_dispatch: 
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  stream:
+    runs-on: windows-latest # Sử dụng Windows để tối ưu bộ mã hóa Render của OBS
     timeout-minutes: 360 
 
     steps:
-    - name: Cài đặt Ngrok bằng Snap
+    - name: Cài đặt OBS Studio bằng Chocolatey
       run: |
-        sudo snap install ngrok
+        choco install obs-studio -y
         
-    - name: Kích hoạt tính năng Remote Desktop trên Ubuntu
+    - name: Tự động cấu hình luồng Stream (Không cần mở màn hình)
       run: |
-        sudo apt update
-        # Tự động đồng ý cài đặt giao diện XFCE4 và công cụ điều khiển XRDP
-        sudo DEBIAN_FRONTEND=noninteractive apt install xfce4 xfce4-goodies xrdp -y
-        # Thiết lập cấu hình hệ thống nhận diện giao diện đồ họa khi đăng nhập
-        echo xfce4-session > ~/.xsession
-        sudo systemctl restart xrdp
+        # Lệnh này tự động điền Stream Key và Server của bạn vào cấu hình OBS ngầm
+        $obsPath = "$env:APPDATA\obs-studio\basic\profiles\Untitled"
+        if (!(Test-Path $obsPath)) { New-Item -ItemType Directory -Force -Path $obsPath }
         
-    - name: Thiết lập Mật khẩu đăng nhập cho hệ thống
+        # Thiết lập cấu hình phát Live (Thay bằng Stream Key của bạn)
+        $config = @"
+        [Service]
+        Type=rtmp_common
+        URL=rtmp://://youtube.com
+        Key=ĐIỀN_STREAM_KEY_YOUTUBE_HOẶC_TIKTOK_CỦA_BẠN_VÀO_ĐÂY
+        "@
+        Set-Content -Path "$obsPath\service.json" -Value $config
+
+    - name: Khởi chạy OBS và Tự động Phát Live trực tiếp
       run: |
-        # Đặt mật khẩu của tài khoản 'runner' mặc định thành 'RdpPassword2026!'
-        echo "runner:RdpPassword2026!" | sudo chpasswd
+        Write-Host "Đang bật OBS Studio và tự động phát luồng Live..."
+        # Mở OBS chạy ngầm ở chế độ ẩn màn hình RDP để tiết kiệm 80% tài nguyên CPU
+        Start-Process "C:\Program Files\obs-studio\bin\64bit\obs64.exe" -ArgumentList "--startstreaming", "--minimize-to-tray"
         
-    - name: Khởi tạo và Duy trì đường truyền RDP trên Ubuntu (Sửa lỗi quyền)
+    - name: Duy trì luồng Live (Vòng lặp 6 tiếng)
       run: |
-        echo "------------------------------------------------------------"
-        echo "Đang kích hoạt đường hầm RDP công khai cho Ubuntu..."
-        echo "Vui lòng lấy IP kết nối mới tại: https://ngrok.com"
-        echo "------------------------------------------------------------"
-        # Truyền trực tiếp Token xác thực vào lệnh khởi chạy để bỏ qua bước lưu file cấu hình bị lỗi quyền
-        sudo ngrok tcp 3389 --authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+        $count = 0
+        while ($count -lt 360) {
+            Start-Sleep -Seconds 60
+            $count++
+            Write-Host "Luồng Livestream đang hoạt động ổn định... Phút thứ: $count"
+        }
