@@ -45,12 +45,11 @@ jobs:
 
     - name: Create Multi-Tunnel Configuration File
       run: |
-        # ĐÃ SỬA: Đưa thuộc tính 'region' về đúng phân cấp đại lý (agent) theo chuẩn Ngrok mới nhất
+        # ĐÃ SỬA: Loại bỏ hoàn toàn thuộc tính 'region' để tương thích 100% với cú pháp Ngrok v3 mới nhất
         $lines = @(
           'version: "3"',
           'agent:',
           '  authtoken: "${{ secrets.NGROK_AUTH_TOKEN }}"',
-          '  region: "sg"',
           'tunnels:',
           '  rdp-tunnel:',
           '    proto: tcp',
@@ -64,7 +63,7 @@ jobs:
     - name: Start Network Services Gateway
       run: |
         echo "----------------------------------------------------------------------"
-        echo "IP PUBLIC GATEWAY IS ACTIVE VIA SINGAPORE SERVER"
+        echo "IP PUBLIC GATEWAY IS ACTIVE"
         echo "Vui long mo Ngrok Dashboard de lay dia chi IP ket noi."
         echo "----------------------------------------------------------------------"
         ngrok start --config ngrok_config.yml --all
