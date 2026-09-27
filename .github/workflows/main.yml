@@ -1,44 +1,54 @@
-name: OBS-Auto-Livestream
+name: Windows-RDP-OBS-Graphics
 
 on: 
   workflow_dispatch: 
 
 jobs:
-  stream:
-    runs-on: windows-latest # Sử dụng Windows để tối ưu bộ mã hóa Render của OBS
+  build:
+    runs-on: windows-latest
     timeout-minutes: 360 
 
     steps:
-    - name: Cài đặt OBS Studio bằng Chocolatey
+    - name: Cài đặt Ngrok và OBS Studio bằng Chocolatey
       run: |
-        choco install obs-studio -y
+        choco install ngrok obs-studio -y
         
-    - name: Tự động cấu hình luồng Stream (Không cần mở màn hình)
+    - name: Xác thực tài khoản Ngrok
       run: |
-        # Lệnh này tự động điền Stream Key và Server của bạn vào cấu hình OBS ngầm
-        $obsPath = "$env:APPDATA\obs-studio\basic\profiles\Untitled"
-        if (!(Test-Path $obsPath)) { New-Item -ItemType Directory -Force -Path $obsPath }
+        ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
         
-        # Thiết lập cấu hình phát Live (Thay bằng Stream Key của bạn)
-        $config = @"
-        [Service]
-        Type=rtmp_common
-        URL=rtmp://://youtube.com
-        Key=ĐIỀN_STREAM_KEY_YOUTUBE_HOẶC_TIKTOK_CỦA_BẠN_VÀO_ĐÂY
-        "@
-        Set-Content -Path "$obsPath\service.json" -Value $config
+    - name: Kích hoạt tính năng Remote Desktop trên Windows
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+        
+    - name: Cấu hình tài khoản đăng nhập hệ thống
+      run: |
+        net user runneradmin RdpPassword2026! /active:yes
+        
+    - name: Cài đặt Card đồ họa ảo (Mesa 3D OpenGL) cho OBS
+      run: |
+        Write-Host "Đang tải và cấu hình Driver đồ họa ảo OpenGL..."
+        # Tải file driver opengl32.dll từ kho lưu trữ Mesa3D chính thức về máy
+        Invoke-WebRequest -Uri "https://github.com" -OutFile "mesa3d.7z"
+        choco install 7zip -y
+        & "C:\Program Files\7-Zip\7z.exe" x mesa3d.7z -o"mesa3d"
+        
+        # Copy file card đồ họa ảo opengl32.dll trực tiếp vào thư mục chạy của OBS Studio
+        Copy-Item "mesa3d\x64\opengl32.dll" -Destination "C:\Program Files\obs-studio\bin\64bit\"
+        Write-Host "Cài đặt Driver đồ họa ảo thành công!"
 
-    - name: Khởi chạy OBS và Tự động Phát Live trực tiếp
+    - name: Khởi tạo Tunnel kết nối đường truyền RDP
       run: |
-        Write-Host "Đang bật OBS Studio và tự động phát luồng Live..."
-        # Mở OBS chạy ngầm ở chế độ ẩn màn hình RDP để tiết kiệm 80% tài nguyên CPU
-        Start-Process "C:\Program Files\obs-studio\bin\64bit\obs64.exe" -ArgumentList "--startstreaming", "--minimize-to-tray"
+        Start-Process ngrok -ArgumentList "tcp 3389"
+        Write-Host "Vui lòng truy cập https://ngrok.com để kiểm tra IP kết nối RDP"
         
-    - name: Duy trì luồng Live (Vòng lặp 6 tiếng)
+    - name: Duy trì kết nối live (Vòng lặp chạy ngầm)
       run: |
         $count = 0
         while ($count -lt 360) {
             Start-Sleep -Seconds 60
             $count++
-            Write-Host "Luồng Livestream đang hoạt động ổn định... Phút thứ: $count"
+            Write-Host "Đang giữ phiên RDP hoạt động ổn định... Phút thứ: $count"
         }
