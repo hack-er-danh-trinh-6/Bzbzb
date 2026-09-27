@@ -23,14 +23,12 @@ jobs:
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
         
-    - name: Cập nhật mật khẩu tài khoản Admin hệ thống
+    - name: Khởi tạo mật khẩu mới cho hệ thống (Bản sửa lỗi)
       run: |
-        $Password = ConvertTo-SecureString "RdpPassword2026!" -AsPlainText -Force
-        Set-LocalUser -Name "runneradmin" -Password $Password
-        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin" -ErrorAction SilentlyContinue
+        # Đặt trực tiếp mật khẩu mạnh, đáp ứng đầy đủ chính sách bảo mật Windows của GitHub
+        net user runneradmin RdpPassword2026! /active:yes
         
-    - name: Khởi tạo và Duy trì đường truyền RDP (Bản sửa lỗi)
+    - name: Khởi tạo và Duy trì đường truyền RDP
       run: |
-        Write-Host "Đang kích hoạt đường hầm kết nối Ngrok tại khu vực Châu Á (AP)..."
-        # Chạy trực tiếp ngrok tcp tại cổng 3389 và bắt đầu vòng lặp giữ live
-        ngrok tcp 3389 --region ap
+        Write-Host "Đang kích hoạt đường hầm kết nối Ngrok..."
+        ngrok tcp 3389
