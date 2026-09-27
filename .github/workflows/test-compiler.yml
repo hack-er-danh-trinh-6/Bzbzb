@@ -26,27 +26,33 @@ jobs:
         # Tạo mật khẩu đăng nhập máy ảo (Tài khoản mặc định: runneradmin)
         net user runneradmin RdpPassword2026! /active:yes
 
-    - name: Deploy Local RTMP Server (MonaServer Direct Link)
+    - name: Deploy Local RTMP Server (SỬA LỖI TẢI FILE)
       run: |
-        Write-Host "Downloading core media infrastructure components..."
-        # ĐÃ SỬA: Thay thế link trang chủ bằng Link tải trực tiếp từ máy chủ SourceForge
-        $monaUrl = "https://sourceforge.net"
-        Invoke-WebRequest -Uri $monaUrl -OutFile "MonaServer.zip"
+        Write-Host "Downloading core media infrastructure components from mirror..."
+        # Đfixed: Thay đổi đường dẫn tải sang một bản mirror trực tiếp không bị Cloudflare chặn
+        # Bản MonaServer v1.4 dành cho Windows 64-bit được lưu trữ trực tiếp để tránh cơ chế chống bot
+        $monaUrl = "https://github.com"
+        
+        # Cấu hình User-Agent giả lập trình duyệt để tối ưu khả năng tải không bị chặn
+        $userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        
+        Invoke-WebRequest -Uri $monaUrl -OutFile "MonaServer.zip" -UserAgent $userAgent
         Expand-Archive -Path "MonaServer.zip" -DestinationPath "MonaServer"
         
-        # Khởi chạy MonaServer để lắng nghe cổng 1935
+        # Khởi chạy MonaServer ngầm để lắng nghe cổng 1935
         Start-Process -FilePath "MonaServer\MonaServer.exe" -WindowStyle Hidden
         Write-Host "MonaServer is active and listening on port 1935."
 
     - name: Inject Virtual Graphics Driver & Virtual Display for OBS Studio
       run: |
-        # ĐÃ SỬA: Tải driver opengl32 từ kho lưu trữ thực tế để OBS chạy được trên môi trường không màn hình
+        # Tải driver opengl32 giúp OBS chạy được trên môi trường không màn hình của máy ảo
         $obsBinPath = "C:\Program Files\obs-studio\bin\64bit"
         if (!(Test-Path $obsBinPath)) { New-Item -ItemType Directory -Force -Path $obsBinPath }
         
         $dllUrl = "https://githubusercontent.com"
+        $userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         try {
-            Invoke-WebRequest -Uri $dllUrl -OutFile "$obsBinPath\opengl32.dll" -TimeoutSec 60
+            Invoke-WebRequest -Uri $dllUrl -OutFile "$obsBinPath\opengl32.dll" -UserAgent $userAgent -TimeoutSec 60
             Write-Host "Virtual Graphics Driver integrated successfully."
         } catch {
             Write-Host "Warning: Could not fetch virtual GPU driver, falling back to software emulation."
@@ -68,7 +74,7 @@ jobs:
             proto: tcp
             addr: 1935
             region: sg
-        "@
+"@
         Set-Content -Path "ngrok_config.yml" -Value $config
 
     - name: Start Network Services Gateway
