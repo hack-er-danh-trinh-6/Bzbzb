@@ -5,16 +5,13 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest # Chạy trên Ubuntu mới nhất
+    runs-on: ubuntu-latest # Chạy trên môi trường Ubuntu mới nhất (24.04)
     timeout-minutes: 360 
 
     steps:
-    - name: Cài đặt Ngrok (Bản sửa lỗi tương thích Ubuntu 24.04)
+    - name: Cài đặt Ngrok bằng Snap (Sửa lỗi giải nén)
       run: |
-        # Tải trực tiếp gói cài đặt chính thức của Ngrok dành cho Linux AMD64
-        curl -sLX stable https://equinox.io -o ngrok.tgz
-        sudo tar -xzf ngrok.tgz -C /usr/local/bin
-        rm ngrok.tgz
+        sudo snap install ngrok
         
     - name: Xác thực tài khoản Ngrok
       run: |
