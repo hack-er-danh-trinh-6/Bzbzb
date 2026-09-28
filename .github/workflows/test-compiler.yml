@@ -43,39 +43,40 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (XÁC THỰC QUA FILE CẤU HÌNH)
+    - name: Start Network Services Gateway (CHUẨN HÓA KHỞI CHẠY)
       run: |
         echo "----------------------------------------------------------------------"
         echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN QUA LOCALXPOSE..."
         echo "----------------------------------------------------------------------"
         
-        # Đã sửa: Tự động ghi mã Token của bạn vào file cấu hình yaml cục bộ
+        # Tạo file cấu hình mạng đồng bộ chuẩn hóa cú pháp LocalXpose CLI mới nhất
         $configContent = @"
         access_token: "${{ secrets.LOCALXPOSE_TOKEN }}"
-        region: "ap"
+        tunnels:
+          rdp-tunnel:
+            type: tcp
+            region: ap
+            to: localhost:3389
+          rtmp-tunnel:
+            type: tcp
+            region: ap
+            to: localhost:1935
         "@
-        Set-Content -Path "config.yaml" -Value $configContent
+        Set-Content -Path "localxpose_config.yaml" -Value $configContent
         
-        # Khởi chạy hầm mạng và ép phần mềm đọc trực tiếp Token từ file cấu hình config.yaml vừa tạo
-        Start-Process loclx -ArgumentList "tunnel tcp -t 3389 -g ap --config config.yaml" -RedirectStandardOutput "rdp_tunnel.log" -RedirectStandardError "rdp_err.log"
-        Start-Process loclx -ArgumentList "tunnel tcp -t 1935 -g ap --config config.yaml" -RedirectStandardOutput "rtmp_tunnel.log" -RedirectStandardError "rtmp_err.log"
+        # Đ FIXED: Gọi lệnh 'tunnel config -f' để nạp file và chạy đồng thời cả 2 đường hầm mạng
+        Start-Process loclx -ArgumentList "tunnel config -f localxpose_config.yaml" -RedirectStandardOutput "gateway_output.log" -RedirectStandardError "gateway_error.log"
         
-        # Chờ 15 giây để máy chủ đám mây LocalXpose đồng bộ cụm máy chủ khu vực Châu Á
+        # Chờ 15 giây để hạ tầng máy chủ biên thiết lập liên kết IP công khai
         Start-Sleep -Seconds 15
         
         echo "=================== ĐỊA CHỈ KẾT NỐI CHÍNH THỨC CỦA BẠN ==================="
-        echo "--- THÔNG TIN ĐƯỜNG HẦM RDP (KẾT NỐI ĐIỀU KHIỂN OBS): ---"
-        if (Test-Path rdp_tunnel.log) { Get-Content rdp_tunnel.log }
-        echo "------------------------------------------------------------------"
-        echo "--- THÔNG TIN ĐƯỜNG HẦM RTMP (NHẬP VÀO TAY CẦM DJI MINI 3): ---"
-        if (Test-Path rtmp_tunnel.log) {
-            $rtmpRaw = Get-Content rtmp_tunnel.log
-            echo "Dia chi tho: $rtmpRaw"
+        if (Test-Path gateway_output.log) {
+            Get-Content gateway_output.log
         }
         echo "=========================================================================="
         echo "--- KÊNH KIỂM TRA LOG HỆ THỐNG (NẾU CÓ LỖI) ---"
-        if (Test-Path rdp_err.log) { Get-Content rdp_err.log }
-        if (Test-Path rtmp_err.log) { Get-Content rtmp_err.log }
+        if (Test-Path gateway_error.log) { Get-Content gateway_error.log }
         
         # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
