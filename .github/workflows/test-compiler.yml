@@ -1,10 +1,14 @@
-name: Automated-DJI-Streaming-Pipeline
+name: Temporary Windows RDP via Pinggy
 
 on:
-  push:
-    branches:
-      - '**'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-rdp-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   media-processing:
@@ -12,75 +16,63 @@ jobs:
     timeout-minutes: 360
 
     steps:
-    - name: Install System Dependencies (Chocolatey)
-      run: |
-        # Cài đặt chính thức hai cấu phần hệ thống ổn định nhất
-        choco install ngrok obs-studio -y
+      - name: Install OBS Studio
+        shell: pwsh
+        run: choco install obs-studio -y --no-progress
 
-    - name: Enable Windows Remote Desktop Configuration
-      run: |
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
-        
-    - name: Configure System Access Password
-      run: |
-        net user runneradmin RdpPassword2026! /active:yes
+      - name: Configure Windows Remote Desktop
+        shell: pwsh
+        env:
+          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
 
-    - name: Deploy Light RTMP Server
-      run: |
-        Write-Host "Setting up live broadcast pipeline ports..."
-        New-Item -ItemType Directory -Force -Path "C:\StreamingServer"
+          if ([string]::IsNullOrWhiteSpace($env:RDP_PASSWORD)) {
+            throw 'Missing GitHub Actions secret RDP_PASSWORD. Add a new, unique password in repository Settings > Secrets and variables > Actions.'
+          }
 
-    - name: Inject Virtual Graphics Driver for OBS Studio
-      run: |
-        $obsBinPath = "C:\Program Files\obs-studio\bin\64bit"
-        if (!(Test-Path $obsBinPath)) { New-Item -ItemType Directory -Force -Path $obsBinPath }
-        $dllUrl = "https://githubusercontent.com"
-        try {
-            Invoke-WebRequest -Uri $dllUrl -OutFile "$obsBinPath\opengl32.dll" -TimeoutSec 60
-            Write-Host "Virtual Graphics Driver integrated successfully."
-        } catch {
-            Write-Host "Software emulation pipeline active."
-        }
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
+          Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name 'UserAuthentication' -Value 1
 
-    - name: Start Network Services Gateway (NGROK MIỄN PHÍ KHÔNG THẺ)
-      run: |
-        echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG KÍCH HOẠT NGROK PHIÊN BẢN MIỄN PHÍ..."
-        echo "----------------------------------------------------------------------"
-        
-        # Bước 1: Xác thực tài khoản Ngrok miễn phí của bạn từ Secret hệ thống
-        ngrok config add-authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
-        
-        # Bước 2: CHỈ MỞ DUY NHẤT 1 CỔNG RDP (3389) để lướt qua chính sách bắt nạp thẻ của Ngrok
-        # Định tuyến luồng mạng về khu vực Châu Á (Singapore - sg) để giảm ping tối đa về Việt Nam
-        Start-Process ngrok -ArgumentList "tcp 3389 --region sg" -RedirectStandardOutput "ngrok_output.log" -RedirectStandardError "ngrok_error.log"
-        
-        # Chờ 12 giây để hạ tầng Ngrok phân bổ liên kết công khai
-        Start-Sleep -Seconds 12
-        
-        # Bước 3: Tải một công cụ dòng lệnh siêu nhẹ để bắt và in trực tiếp link Ngrok ra màn hình log
-        Invoke-WebRequest -Uri "http://127.0.0" -OutFile "tunnels.json"
-        
-        echo "=================== ĐỊA CHỈ KẾT NỐI MIỄN PHÍ CỦA BẠN ==================="
-        if (Test-Path tunnels.json) {
-            $json = Get-Content tunnels.json -Raw | ConvertFrom-Json
-            $publicUrl = $json.tunnels[0].public_url
-            
-            echo " ĐỊA CHỈ ĐĂNG NHẬP RDP (SỬ DỤNG TRÊN ĐIỆN THOẠI ANDROID 15):"
-            echo $publicUrl
-            echo "------------------------------------------------------------------------"
-            echo " CẤU HÌNH PHÁT LIVE RTMP CHO DJI MINI 3:"
-            echo "Sau khi bạn dùng Remote Desktop vào được màn hình máy ảo Windows,"
-            echo "hãy bật OBS Studio và điền địa chỉ luồng nhận nội bộ là:"
-            echo "rtmp://127.0.0.1/live/dji_stream"
-        } else {
-            echo "LỖI: Chưa lấy được link từ API Ngrok cục bộ."
-        }
-        echo "========================================================================"
-        echo "--- KÊNH KIỂM TRA LOG HỆ THỐNG (NẾU CÓ LỖI) ---"
-        if (Test-Path ngrok_error.log) { Get-Content ngrok_error.log }
-        
-        # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
-        Start-Sleep -Seconds 21600
+          & net.exe user runneradmin "$env:RDP_PASSWORD" /active:yes
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Could not set the runneradmin password.'
+          }
+
+          $termService = Get-Service -Name TermService
+          if ($termService.Status -ne 'Running') {
+            Start-Service -Name TermService
+          }
+          $deadline = (Get-Date).AddSeconds(30)
+          do {
+            $rdpListener = Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue
+            if ($rdpListener) { break }
+            Start-Sleep -Seconds 1
+          } while ((Get-Date) -lt $deadline)
+
+          if (-not $rdpListener) {
+            throw 'Remote Desktop is not listening on TCP port 3389.'
+          }
+
+          Write-Host 'RDP is listening locally on TCP 3389.'
+
+      - name: Start temporary Pinggy TCP tunnel for RDP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sshCommand = Get-Command ssh.exe -ErrorAction Stop
+          $attempt = 0
+
+          Write-Host 'WARNING: This forwards RDP (TCP 3389) to a public TCP endpoint. Only use the endpoint for your own session.'
+          Write-Host 'The free endpoint is temporary and may change after reconnecting. Use the newest tcp://hostname:port printed below.'
+          Write-Host 'This workflow is manual-only and will stop when the GitHub-hosted job ends (maximum 6 hours).'
+
+          while ($true) {
+            $attempt++
+            Write-Host "Connecting Pinggy TCP tunnel (attempt $attempt)..."
+            & $sshCommand.Source -p 443 -R0:localhost:3389 -T -o StrictHostKeyChecking=accept-new -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 tcp@free.pinggy.io
+            $sshExitCode = $LASTEXITCODE
+            Write-Host "Pinggy connection ended with exit code $sshExitCode. Retrying in 5 seconds; the next endpoint may be different."
+            Start-Sleep -Seconds 5
+          }
