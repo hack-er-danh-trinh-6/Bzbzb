@@ -57,7 +57,8 @@ jobs:
           $downloadUrl = 'https://downloads.sourceforge.net/project/monaserver/MonaServer/MonaServer_Win64.zip'
           $expectedSha256 = '905504b6e2cdcb8a066e0f37e3bacdcbaea523d1fefb550b733a7e11c89b5157'
 
-          Invoke-WebRequest -Uri $downloadUrl -OutFile $archive
+          # SourceForge may return an HTML download page to PowerShell's default user-agent.
+          Invoke-WebRequest -Uri $downloadUrl -OutFile $archive -UserAgent 'curl/8.0'
           $actualSha256 = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actualSha256 -ne $expectedSha256) {
             throw "MonaServer archive checksum mismatch: expected $expectedSha256 but received $actualSha256."
