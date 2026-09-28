@@ -3,50 +3,98 @@ name: Automated-DJI-Streaming-Pipeline
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   media-processing:
     runs-on: windows-latest
     timeout-minutes: 360
 
+    env:
+      NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+      RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+
     steps:
-      - name: Install System Dependencies (Chocolatey)
+      - name: Install ngrok and OBS Studio
+        shell: pwsh
         run: |
-          choco install ngrok obs-studio -y
+          choco install ngrok obs-studio -y --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            throw "Cài ngrok hoặc OBS Studio thất bại."
+          }
 
-      - name: Enable Windows Remote Desktop Configuration
-        run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+          if (-not (Get-Command ngrok -ErrorAction SilentlyContinue)) {
+            throw "Không tìm thấy ngrok sau khi cài."
+          }
 
-      - name: Configure System Access Password
+      - name: Enable Remote Desktop
+        shell: pwsh
         run: |
-          net user runneradmin RdpPassword2026! /active:yes
+          if ([string]::IsNullOrWhiteSpace($env:RDP_PASSWORD)) {
+            throw "Thiếu GitHub Actions secret RDP_PASSWORD."
+          }
 
-      - name: Inject Virtual Graphics Driver for OBS Studio
-        run: |
-          $obsBinPath = "C:\Program Files\obs-studio\bin\64bit"
-          if (!(Test-Path $obsBinPath)) { New-Item -ItemType Directory -Force -Path $obsBinPath }
-          curl.exe -L -A "Mozilla/5.0" -o "$obsBinPath\opengl32.dll" "https://raw.githubusercontent.com/pal1000/save-open-gl-dll/master/opengl32.dll"
-          Write-Host "Virtual Graphics Driver integrated successfully."
+          Set-ItemProperty `
+            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+            -Name 'fDenyTSConnections' `
+            -Value 0
 
-      - name: Create Multi-Tunnel Configuration File
+          Set-ItemProperty `
+            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+            -Name 'UserAuthentication' `
+            -Value 1
+
+          Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'
+
+          $password = ConvertTo-SecureString $env:RDP_PASSWORD -AsPlainText -Force
+          $user = Get-LocalUser -Name 'runneradmin' -ErrorAction SilentlyContinue
+
+          if ($null -eq $user) {
+            New-LocalUser `
+              -Name 'runneradmin' `
+              -Password $password `
+              -Description 'Temporary RDP user for this workflow'
+          } else {
+            Set-LocalUser -Name 'runneradmin' -Password $password
+          }
+
+          Enable-LocalUser -Name 'runneradmin'
+
+      - name: Create ngrok TCP config and start tunnel
+        shell: pwsh
         run: |
+          if ([string]::IsNullOrWhiteSpace($env:NGROK_AUTHTOKEN)) {
+            throw "Thiếu GitHub Actions secret NGROK_AUTHTOKEN."
+          }
+
+          $configPath = Join-Path $env:RUNNER_TEMP 'ngrok.yml'
+
           $config = @"
-          version: "2"
-          authtoken: 3JxZ2KxAFJPl2bJ8Fly6AUSQLaA_MP31K9dQ6KdK1DotPYc7
-          region: sg
-          tunnels:
-            rdp-tunnel:
-              proto: tcp
-              addr: 3389
+          version: 3
+          agent:
+            authtoken: $env:NGROK_AUTHTOKEN
+          endpoints:
+            - name: rdp-tunnel
+              url: tcp://
+              upstream:
+                url: 3389
           "@
-          Set-Content -Path "ngrok_config.yml" -Value $config
 
-      - name: Start Network Services Gateway
-        run: |
-          echo "----------------------------------------------------------------------"
-          echo "IP PUBLIC GATEWAY IS ACTIVE VIA SINGAPORE SERVER"
-          echo "Please check Ngrok Dashboard to retrieve RDP address."
-          echo "----------------------------------------------------------------------"
-          ngrok start rdp-tunnel --config ngrok_config.yml
+          [System.IO.File]::WriteAllText(
+            $configPath,
+            $config,
+            [System.Text.UTF8Encoding]::new($false)
+          )
+
+          ngrok config check --config $configPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "ngrok config check thất bại."
+          }
+
+          # Giữ tiến trình chạy để tunnel còn hoạt động.
+          # Xem log bước này để lấy địa chỉ tcp://... do ngrok cấp.
+          ngrok start --config $configPath --log stdout --log-format logfmt rdp-tunnel
+          if ($LASTEXITCODE -ne 0) {
+            throw "ngrok thoát với lỗi."
+          }
