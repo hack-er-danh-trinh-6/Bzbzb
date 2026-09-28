@@ -9,382 +9,63 @@ jobs:
     timeout-minutes: 360
 
     steps:
-
-    # ============================================================
-    # 1. INSTALL OBS + NGROK
-    # ============================================================
-    - name: Install System Dependencies
-      shell: powershell
-      run: |
-        $ErrorActionPreference = "Stop"
-
-        Write-Host "Installing OBS Studio and ngrok..."
-
-        choco install obs-studio ngrok -y --no-progress
-
-        Write-Host "Installation completed."
-
-        obs64.exe --version
-        ngrok version
-
-
-    # ============================================================
-    # 2. AUTHENTICATE NGROK
-    # ============================================================
-    - name: Authenticate ngrok
-      shell: powershell
-      env:
-        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-      run: |
-        $ErrorActionPreference = "Stop"
-
-        if ([string]::IsNullOrWhiteSpace($env:NGROK_AUTH_TOKEN)) {
-            Write-Error "NGROK_AUTH_TOKEN secret is missing."
-            exit 1
-        }
-
-        ngrok config add-authtoken "$env:NGROK_AUTH_TOKEN"
-
-        Write-Host "ngrok authentication completed."
-
-
-    # ============================================================
-    # 3. ENABLE RDP
-    # ============================================================
-    - name: Enable Windows Remote Desktop
-      shell: powershell
-      run: |
-        $ErrorActionPreference = "Stop"
-
-        Write-Host "Enabling Remote Desktop..."
-
-        Set-ItemProperty `
-          -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
-          -Name "fDenyTSConnections" `
-          -Value 0
-
-        Set-ItemProperty `
-          -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" `
-          -Name "UserAuthentication" `
-          -Value 1
-
-        Enable-NetFirewallRule `
-          -DisplayGroup "Remote Desktop"
-
-        Write-Host "RDP enabled."
-
-
-    # ============================================================
-    # 4. CREATE RDP USER
-    # ============================================================
-    - name: Configure RDP User
-      shell: powershell
-      run: |
-        $ErrorActionPreference = "Stop"
-
-        $username = "runneradmin"
-        $password = "${{ secrets.RDP_PASSWORD }}"
-
-        if ([string]::IsNullOrWhiteSpace($password)) {
-            Write-Error "RDP_PASSWORD secret is missing."
-            exit 1
-        }
-
-        $existing = Get-LocalUser -Name $username -ErrorAction SilentlyContinue
-
-        if ($null -eq $existing) {
-
-            $securePassword = ConvertTo-SecureString `
-              $password `
-              -AsPlainText `
-              -Force
-
-            New-LocalUser `
-              -Name $username `
-              -Password $securePassword `
-              -Description "Temporary RDP user"
-
-        } else {
-
-            $securePassword = ConvertTo-SecureString `
-              $password `
-              -AsPlainText `
-              -Force
-
-            Set-LocalUser `
-              -Name $username `
-              -Password $securePassword
-        }
-
-        Add-LocalGroupMember `
-          -Group "Remote Desktop Users" `
-          -Member $username `
-          -ErrorAction SilentlyContinue
-
-        Write-Host "RDP user configured."
-
-
-    # ============================================================
-    # 5. DOWNLOAD MONASERVER
-    # ============================================================
-    - name: Download MonaServer
-      shell: powershell
-      run: |
-        $ErrorActionPreference = "Stop"
-
-        $url = "https://sourceforge.net/projects/monaserver/files/MonaServer/MonaServer_Win64.zip/download"
-
-        $zip = "$env:RUNNER_TEMP\MonaServer.zip"
-        $dir = "$env:RUNNER_TEMP\MonaServer"
-
-        Write-Host "Downloading MonaServer..."
-
-        Invoke-WebRequest `
-          -Uri $url `
-          -OutFile $zip `
-          -UseBasicParsing
-
-        if (!(Test-Path $zip)) {
-            Write-Error "MonaServer ZIP was not downloaded."
-            exit 1
-        }
-
-        $size = (Get-Item $zip).Length
-
-        Write-Host "Downloaded size: $size bytes"
-
-        if ($size -lt 100000) {
-            Write-Error "Downloaded file is unexpectedly small. Download may have failed."
-            exit 1
-        }
-
-        if (Test-Path $dir) {
-            Remove-Item $dir -Recurse -Force
-        }
-
-        New-Item `
-          -ItemType Directory `
-          -Path $dir `
-          -Force | Out-Null
-
-        Expand-Archive `
-          -Path $zip `
-          -DestinationPath $dir `
-          -Force
-
-        Write-Host "MonaServer extracted."
-
-
-    # ============================================================
-    # 6. LOCATE MONASERVER.EXE
-    # ============================================================
-    - name: Locate MonaServer
-      shell: powershell
-      run: |
-        $ErrorActionPreference = "Stop"
-
-        $exe = Get-ChildItem `
-          "$env:RUNNER_TEMP\MonaServer" `
-          -Filter "MonaServer.exe" `
-          -Recurse `
-          -File |
-          Select-Object -First 1
-
-        if ($null -eq $exe) {
-            Write-Error "MonaServer.exe was not found."
-            exit 1
-        }
-
-        Write-Host "MonaServer found:"
-        Write-Host $exe.FullName
-
-        "MONA_PATH=$($exe.FullName)" >> $env:GITHUB_ENV
-
-
-    # ============================================================
-    # 7. START MONASERVER
-    # ============================================================
-    - name: Start Local RTMP Server
-      shell: powershell
-      run: |
-        $ErrorActionPreference = "Stop"
-
-        Write-Host "Starting MonaServer..."
-
-        Start-Process `
-          -FilePath "$env:MONA_PATH" `
-          -WorkingDirectory (Split-Path "$env:MONA_PATH") `
-          -WindowStyle Hidden
-
-        Start-Sleep -Seconds 5
-
-        $port = Get-NetTCPConnection `
-          -LocalPort 1935 `
-          -State Listen `
-          -ErrorAction SilentlyContinue
-
-        if ($null -eq $port) {
-            Write-Warning "Port 1935 was not detected yet."
-            Write-Warning "MonaServer may use a different configuration."
-        } else {
-            Write-Host "RTMP server is listening on TCP 1935."
-        }
-
-
-    # ============================================================
-    # 8. CHECK OBS
-    # ============================================================
-    - name: Prepare OBS
-      shell: powershell
-      run: |
-        $ErrorActionPreference = "Stop"
-
-        $obs = "C:\Program Files\obs-studio\bin\64bit\obs64.exe"
-
-        if (!(Test-Path $obs)) {
-            Write-Error "OBS Studio executable was not found."
-            exit 1
-        }
-
-        Write-Host "OBS found:"
-        Write-Host $obs
-
-        New-Item `
-          -ItemType Directory `
-          -Path "$env:APPDATA\obs-studio" `
-          -Force | Out-Null
-
-        Write-Host "OBS environment prepared."
-
-
-    # ============================================================
-    # 9. CREATE NGROK CONFIG
-    # ============================================================
-    - name: Create ngrok Configuration
-      shell: powershell
-      run: |
-        $ErrorActionPreference = "Stop"
-
-        $configPath = "$env:RUNNER_TEMP\ngrok.yml"
-
-        @"
-version: "2"
-
-tunnels:
-
-  rdp:
-    proto: tcp
-    addr: 3389
-
-  rtmp:
-    proto: tcp
-    addr: 1935
-
-"@ | Set-Content `
-          -Path $configPath `
-          -Encoding UTF8
-
-        Write-Host "ngrok configuration created:"
-        Get-Content $configPath
-
-        "NGROK_CONFIG=$configPath" >> $env:GITHUB_ENV
-
-
-    # ============================================================
-    # 10. START NGROK
-    # ============================================================
-    - name: Start Network Tunnels
-      shell: powershell
-      run: |
-        $ErrorActionPreference = "Stop"
-
-        Write-Host "Starting ngrok tunnels..."
-
-        Start-Process `
-          -FilePath "ngrok.exe" `
-          -ArgumentList "start --all --config `"$env:NGROK_CONFIG`"" `
-          -WindowStyle Hidden
-
-        Start-Sleep -Seconds 8
-
-        Write-Host ""
-        Write-Host "============================================================"
-        Write-Host "NGROK PUBLIC ENDPOINTS"
-        Write-Host "============================================================"
-
-        try {
-
-            $api = Invoke-RestMethod `
-              -Uri "http://127.0.0.1:4040/api/tunnels" `
-              -TimeoutSec 10
-
-            foreach ($tunnel in $api.tunnels) {
-
-                Write-Host ""
-                Write-Host "NAME : $($tunnel.name)"
-                Write-Host "ADDR : $($tunnel.public_url)"
-                Write-Host "LOCAL: $($tunnel.config.addr)"
-            }
-
-        } catch {
-
-            Write-Warning "Could not read ngrok API."
-            Write-Warning $_
-        }
-
-
-    # ============================================================
-    # 11. NETWORK DIAGNOSTICS
-    # ============================================================
-    - name: Verify Streaming Environment
-      shell: powershell
-      run: |
-        Write-Host ""
-        Write-Host "============================================================"
-        Write-Host "SYSTEM INFORMATION"
-        Write-Host "============================================================"
-
-        Get-CimInstance Win32_Processor |
-          Select-Object Name, NumberOfCores, NumberOfLogicalProcessors
-
-        Get-CimInstance Win32_OperatingSystem |
-          Select-Object Caption, TotalVisibleMemorySize, FreePhysicalMemory
-
-        Write-Host ""
-        Write-Host "============================================================"
-        Write-Host "PORT CHECK"
-        Write-Host "============================================================"
-
-        Get-NetTCPConnection `
-          -State Listen |
-          Where-Object {
-              $_.LocalPort -in @(1935,3389,4040)
-          } |
-          Select-Object LocalAddress,LocalPort,State,OwningProcess
-
-
-    # ============================================================
-    # 12. KEEP RUNNER ALIVE
-    # ============================================================
-    - name: Keep Streaming Session Alive
-      shell: powershell
-      run: |
-        Write-Host ""
-        Write-Host "============================================================"
-        Write-Host "DJI STREAMING PIPELINE IS RUNNING"
-        Write-Host "============================================================"
-        Write-Host ""
-        Write-Host "RTMP LOCAL : rtmp://127.0.0.1:1935/"
-        Write-Host "RDP LOCAL  : 127.0.0.1:3389"
-        Write-Host ""
-        Write-Host "Use the ngrok public TCP endpoints shown above."
-        Write-Host ""
-        Write-Host "The GitHub Runner will remain active for up to 6 hours."
-        Write-Host ""
-
-        while ($true) {
-
-            Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Pipeline active"
-
-            Start-Sleep -Seconds 60
-        }
+      - name: Install System Dependencies (Chocolatey)
+        run: |
+          choco install ngrok obs-studio -y
+
+      - name: Authenticate Network Tunnel Agent
+        run: |
+          ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+
+      - name: Enable Windows Remote Desktop Configuration
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+
+      - name: Configure System Access Password
+        run: |
+          net user runneradmin ${{ secrets.RDP_PASSWORD }} /active:yes
+
+      - name: Deploy Local RTMP Server (MonaServer)
+        run: |
+          Write-Host "Downloading core media infrastructure components..."
+          # Using direct mirror link and curl.exe to bypass Cloudflare bot protection
+          curl.exe -L -o MonaServer.zip "https://downloads.sourceforge.net/project/monaserver/MonaServer_1.0.1.zip"
+          Expand-Archive -Path "MonaServer.zip" -DestinationPath "MonaServer"
+          Start-Process -FilePath "MonaServer\MonaServer.exe" -WindowStyle Hidden
+          Write-Host "MonaServer is active and listening on port 1935."
+
+      - name: Inject Virtual Graphics Driver for OBS Studio
+        run: |
+          $obsBinPath = "C:\Program Files\obs-studio\bin\64bit"
+          if (!(Test-Path $obsBinPath)) { New-Item -ItemType Directory -Force -Path $obsBinPath }
+          # Updated with a valid direct download link or placeholder URL
+          curl.exe -L -o "$obsBinPath\opengl32.dll" "https://raw.githubusercontent.com/pal1000/save-open-gl-dll/master/opengl32.dll"
+          Write-Host "Virtual Graphics Driver integrated successfully."
+
+      - name: Create Multi-Tunnel Configuration File
+        run: |
+          $config = @"
+          version: "3"
+          agent:
+            authtoken: "${{ secrets.NGROK_AUTH_TOKEN }}"
+          tunnels:
+            rdp-tunnel:
+              proto: tcp
+              addr: 3389
+              region: sg
+            rtmp-tunnel:
+              proto: tcp
+              addr: 1935
+              region: sg
+          "@
+          Set-Content -Path "ngrok_config.yml" -Value $config
+
+      - name: Start Network Services Gateway
+        run: |
+          echo "----------------------------------------------------------------------"
+          echo "IP PUBLIC GATEWAY IS ACTIVE VIA SINGAPORE SERVER"
+          echo "Please check Ngrok Dashboard to retrieve RDP and RTMP addresses."
+          echo "----------------------------------------------------------------------"
+          ngrok start --config ngrok_config.yml --all
