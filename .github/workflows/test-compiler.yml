@@ -43,28 +43,37 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (IN LINK TRỰC TIẾP)
+    - name: Start Network Services Gateway (SỬA LỖI TERMINAL)
       run: |
         echo "----------------------------------------------------------------------"
         echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN CÔNG KHAI QUA SERVEO..."
         echo "----------------------------------------------------------------------"
         
-        # Đmanager: Chuyển hướng xuất file log trực tiếp bằng Powershell Job để không bị kẹt luồng văn bản
-        $rdpJob = Start-Job -ScriptBlock {
-            ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:3389 serveo.net
+        # ĐÃ SỬA: Thêm cờ -n -N -T để triệt tiêu lỗi Pseudo-terminal trong môi trường không giao diện
+        # Xuất dữ liệu trực tiếp ra file log để theo dõi tiến trình cấp link
+        Start-Process ssh -ArgumentList "-n -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:3389 serveo.net" -RedirectStandardOutput "rdp_link.log" -RedirectStandardError "rdp_err.log"
+        Start-Process ssh -ArgumentList "-n -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:1935 serveo.net" -RedirectStandardOutput "rtmp_link.log" -RedirectStandardError "rtmp_err.log"
+        
+        # Vòng lặp chờ tối đa 30 giây để kiểm tra và in link kết nối ra màn hình log
+        $timeout = 30
+        while ($timeout -gt 0) {
+            Start-Sleep -Seconds 2
+            if ((Test-Path rdp_link.log) -and (Get-Content rdp_link.log)) {
+                echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
+                Get-Content rdp_link.log
+                Get-Content rtmp_link.log
+                echo "==============================================================="
+                break
+            }
+            $timeout -= 2
         }
         
-        $rtmpJob = Start-Job -ScriptBlock {
-            ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:1935 serveo.net
+        # Nếu lỗi xảy ra, in log lỗi để kiểm tra cấu hình mạng
+        if ($timeout -le 0) {
+            echo "--- LOG LỖI HỆ THỐNG (ĐỂ KIỂM TRA) ---"
+            if (Test-Path rdp_err.log) { Get-Content rdp_err.log }
+            if (Test-Path rtmp_err.log) { Get-Content rtmp_err.log }
         }
         
-        # Chờ 12 giây để hệ thống đám mây phân bổ cổng kết nối ngẫu nhiên
-        Start-Sleep -Seconds 12
-        
-        echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
-        Receive-Job -Job $rdpJob
-        Receive-Job -Job $rtmpJob
-        echo "==============================================================="
-        
-        # Duy trì máy ảo hoạt động ổn định trong 6 tiếng để truyền tải dữ liệu drone
+        # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
