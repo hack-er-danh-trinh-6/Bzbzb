@@ -27,22 +27,6 @@ jobs:
         run: |
           net user runneradmin ${{ secrets.RDP_PASSWORD }} /active:yes
 
-      - name: Deploy Local RTMP Server (MonaServer)
-        run: |
-          Write-Host "Downloading core media infrastructure components..."
-          curl.exe -L -o MonaServer.zip "https://sourceforge.net/projects/monaserver/files/MonaServer_1.0.1.zip/download"
-          
-          $file = Get-Item "MonaServer.zip"
-          Write-Host "Downloaded file size: $($file.Length) bytes"
-          
-          if ($file.Length -lt 500000) {
-              throw "Downloaded zip archive is invalid or incomplete (Size: $($file.Length) bytes)."
-          }
-          
-          Expand-Archive -Path "MonaServer.zip" -DestinationPath "MonaServer" -Force
-          Start-Process -FilePath "MonaServer\MonaServer.exe" -WindowStyle Hidden
-          Write-Host "MonaServer is active and listening on port 1935."
-
       - name: Inject Virtual Graphics Driver for OBS Studio
         run: |
           $obsBinPath = "C:\Program Files\obs-studio\bin\64bit"
