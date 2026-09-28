@@ -43,28 +43,30 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (GỘP KẾT NỐI)
+    - name: Start Network Services Gateway (CHUYỂN SANG TELEBIT)
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN CÔNG KHAI QUA SERVEO..."
+        echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN CÔNG KHAI QUA TELEBIT..."
         echo "----------------------------------------------------------------------"
         
-        # Đugb: Gộp chung RDP (3389) và RTMP (1935) vào 1 kết nối duy nhất để tránh bị chặn cổng
-        # Ép in thông tin kết nối trực tiếp ra file log hệ thống bằng cấu hình đa luồng
-        Start-Process ssh -ArgumentList "-n -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:3389 -R 0:localhost:1935 serveo.net" -RedirectStandardError "serveo_gateway.log"
+        # Cài đặt tự động Telebit Agent dạng gói phần mềm hệ thống không cần tài khoản
+        Invoke-Expression (Invoke-WebRequest -Uri "https://telebit.io" -UseBasicParsing).Content
         
-        # Vòng lặp chờ 15 giây để Serveo phản hồi và gán địa chỉ IP Public
-        $timeout = 15
-        while ($timeout -gt 0) {
-            Start-Sleep -Seconds 3
-            if ((Test-Path serveo_gateway.log) -and (Get-Content serveo_gateway.log)) {
-                echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
-                Get-Content serveo_gateway.log
-                echo "==============================================================="
-                break
-            }
-            $timeout -= 3
-        }
+        # Khởi tạo đồng thời 2 đường hầm kết nối mạng công khai cho RDP và RTMP
+        Start-Process "$env:USERPROFILE\telebit\bin\telebit.bat" -ArgumentList "tunnel 3389 tcp" -RedirectStandardOutput "rdp_tele.log"
+        Start-Process "$env:USERPROFILE\telebit\bin\telebit.bat" -ArgumentList "tunnel 1935 tcp" -RedirectStandardOutput "rtmp_tele.log"
+        
+        # Chờ 15 giây để máy chủ đám mây đồng bộ và cấp phát liên kết
+        Start-Sleep -Seconds 15
+        
+        echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
+        if (Test-Path rdp_tele.log) { Get-Content rdp_tele.log | Select-String "tcp://" }
+        if (Test-Path rtmp_tele.log) { Get-Content rtmp_tele.log | Select-String "tcp://" }
+        echo "Nếu khung trên trống, hãy kiểm tra toàn bộ dữ liệu phản hồi bên dưới:"
+        echo "---------------------------------------------------------------"
+        if (Test-Path rdp_tele.log) { Get-Content rdp_tele.log | Select-Object -Last 5 }
+        if (Test-Path rtmp_tele.log) { Get-Content rtmp_tele.log | Select-Object -Last 5 }
+        echo "==============================================================="
         
         # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
