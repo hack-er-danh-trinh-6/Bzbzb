@@ -13,10 +13,6 @@ jobs:
         run: |
           choco install ngrok obs-studio -y
 
-      - name: Authenticate Network Tunnel Agent
-        run: |
-          ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-
       - name: Enable Windows Remote Desktop Configuration
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
@@ -25,7 +21,7 @@ jobs:
 
       - name: Configure System Access Password
         run: |
-          net user runneradmin ${{ secrets.RDP_PASSWORD }} /active:yes
+          net user runneradmin RdpPassword2026! /active:yes
 
       - name: Inject Virtual Graphics Driver for OBS Studio
         run: |
@@ -38,6 +34,7 @@ jobs:
         run: |
           $config = @"
           version: "2"
+          authtoken: 3JxZ2KxAFJPl2bJ8Fly6AUSQLaA_MP31K9dQ6KdK1DotPYc7
           region: sg
           tunnels:
             rdp-tunnel:
