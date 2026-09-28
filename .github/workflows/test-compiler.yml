@@ -12,10 +12,20 @@ jobs:
     timeout-minutes: 360
 
     steps:
-    - name: Cài đặt phần mềm Hệ thống (Chocolatey)
+    - name: Install System Dependencies (Chocolatey)
       run: |
-        # Cài đặt OBS Studio và RustDesk phiên bản Windows chính thức
-        choco install obs-studio rustdesk -y
+        # Chỉ cài đặt gói OBS Studio ổn định cho hệ thống
+        choco install obs-studio -y
+
+    - name: Enable Windows Remote Desktop Configuration
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+        
+    - name: Configure System Access Password
+      run: |
+        net user runneradmin RdpPassword2026! /active:yes
 
     - name: Deploy Light RTMP Server
       run: |
@@ -34,34 +44,41 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Khởi chạy RustDesk với ID và Mật khẩu tự chọn
+    - name: Start Network Services Gateway (GỘP CỔNG SERVEO)
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG THIẾT LẬP RUSTDESK VỚI ID VÀ MẬT KHẨU CỦA BẠN..."
+        echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN CÔNG KHAI QUA SERVEO..."
         echo "----------------------------------------------------------------------"
         
-        # Đường dẫn thư mục cài đặt mặc định của RustDesk
-        $rustdesk = "C:\Program Files\RustDesk\rustdesk.exe"
+        # Thêm cờ -n -N -T để triệt tiêu hoàn toàn lỗi Pseudo-terminal trong GitHub Actions
+        # Gộp chung cả hai cổng 3389 (RDP) và 1935 (RTMP) vào 1 lệnh SSH duy nhất để tránh bị Serveo từ chối
+        Start-Process ssh -ArgumentList "-n -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:3389 -R 0:localhost:1935 serveo.net" -RedirectStandardError "serveo_gateway.log"
         
-        # Bước 1: Khởi chạy dịch vụ nền RustDesk
-        Start-Process $rustdesk -ArgumentList "--service"
-        Start-Sleep -Seconds 3
+        # Vòng lặp quét liên tục trong 20 giây để chờ Serveo cấp phát cổng công khai
+        $timeout = 20
+        while ($timeout -gt 0) {
+            Start-Sleep -Seconds 2
+            if ((Test-Path serveo_gateway.log) -and (Get-Content serveo_gateway.log)) {
+                echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
+                $logContent = Get-Content serveo_gateway.log
+                
+                # In toàn bộ log chứa thông tin gán cổng của Serveo ra màn hình
+                foreach ($line in $logContent) {
+                    if ($line -match "Allocated port") {
+                        echo $line
+                    }
+                }
+                echo "==============================================================="
+                break
+            }
+            $timeout -= 2
+        }
         
-        # Bước 2: TỰ ĐẶT ID THEO Ý BẠN (Thay số 987654321 bằng số bất kỳ bạn muốn)
-        # Lưu ý: ID phải là chuỗi số từ 9 đến 10 ký tự tùy chọn
-        & $rustdesk --set-id 987654321
-        
-        # Bước 3: TỰ ĐẶT MẬT KHẨU TRUY CẬP CỐ ĐỊNH
-        & $rustdesk --password RdpPassword2026!
-        
-        Start-Sleep -Seconds 2
-        
-        echo "=================== THÔNG TIN KẾT NỐI RUSTDESK ==================="
-        echo "MÃ SỐ ID CỐ ĐỊNH TỰ CHỌN: 987654321"
-        echo "MẬT KHẨU TRUY CẬP (PASSWORD): RdpPassword2026!"
-        echo "=================================================================="
-        echo "Hãy mở phần mềm RustDesk trên máy tính ở nhà và nhập thông tin trên để vào máy ảo ngay."
-        echo "=================================================================="
+        # Nếu vòng lặp hết thời gian mà chưa bắt được chữ, in toàn bộ log lỗi để kiểm tra
+        if ($timeout -le 0) {
+            echo "--- LOG CHI TIẾT HỆ THỐNG ---"
+            if (Test-Path serveo_gateway.log) { Get-Content serveo_gateway.log }
+        }
         
         # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
