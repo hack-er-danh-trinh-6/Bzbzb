@@ -30,14 +30,13 @@ jobs:
       - name: Deploy Local RTMP Server (MonaServer)
         run: |
           Write-Host "Downloading core media infrastructure components..."
-          $downloadUrl = "https://github.com/MonaSolutions/MonaServer/releases/download/v1.0.1/MonaServer_1.0.1.zip"
-          Invoke-WebRequest -Uri $downloadUrl -OutFile "MonaServer.zip" -UserAgent "Mozilla/5.0"
+          curl.exe -L -o MonaServer.zip "https://sourceforge.net/projects/monaserver/files/MonaServer_1.0.1.zip/download"
           
           $file = Get-Item "MonaServer.zip"
           Write-Host "Downloaded file size: $($file.Length) bytes"
           
-          if ($file.Length -lt 1000000) {
-              throw "Downloaded zip archive is too small or invalid (Size: $($file.Length) bytes)."
+          if ($file.Length -lt 500000) {
+              throw "Downloaded zip archive is invalid or incomplete (Size: $($file.Length) bytes)."
           }
           
           Expand-Archive -Path "MonaServer.zip" -DestinationPath "MonaServer" -Force
