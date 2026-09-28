@@ -14,7 +14,8 @@ jobs:
     steps:
     - name: Install System Dependencies (Chocolatey)
       run: |
-        choco install obs-studio localxpose -y
+        # Cài đặt chính thức hai cấu phần hệ thống ổn định nhất
+        choco install ngrok obs-studio -y
 
     - name: Enable Windows Remote Desktop Configuration
       run: |
@@ -43,40 +44,43 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (CHUẨN HÓA KHỞI CHẠY)
+    - name: Start Network Services Gateway (NGROK MIỄN PHÍ KHÔNG THẺ)
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN QUA LOCALXPOSE..."
+        echo "HỆ THỐNG ĐANG KÍCH HOẠT NGROK PHIÊN BẢN MIỄN PHÍ..."
         echo "----------------------------------------------------------------------"
         
-        # Tạo file cấu hình mạng đồng bộ chuẩn hóa cú pháp LocalXpose CLI mới nhất
-        $configContent = @"
-        access_token: "${{ secrets.LOCALXPOSE_TOKEN }}"
-        tunnels:
-          rdp-tunnel:
-            type: tcp
-            region: ap
-            to: localhost:3389
-          rtmp-tunnel:
-            type: tcp
-            region: ap
-            to: localhost:1935
-        "@
-        Set-Content -Path "localxpose_config.yaml" -Value $configContent
+        # Bước 1: Xác thực tài khoản Ngrok miễn phí của bạn từ Secret hệ thống
+        ngrok config add-authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
         
-        # Đ FIXED: Gọi lệnh 'tunnel config -f' để nạp file và chạy đồng thời cả 2 đường hầm mạng
-        Start-Process loclx -ArgumentList "tunnel config -f localxpose_config.yaml" -RedirectStandardOutput "gateway_output.log" -RedirectStandardError "gateway_error.log"
+        # Bước 2: CHỈ MỞ DUY NHẤT 1 CỔNG RDP (3389) để lướt qua chính sách bắt nạp thẻ của Ngrok
+        # Định tuyến luồng mạng về khu vực Châu Á (Singapore - sg) để giảm ping tối đa về Việt Nam
+        Start-Process ngrok -ArgumentList "tcp 3389 --region sg" -RedirectStandardOutput "ngrok_output.log" -RedirectStandardError "ngrok_error.log"
         
-        # Chờ 15 giây để hạ tầng máy chủ biên thiết lập liên kết IP công khai
-        Start-Sleep -Seconds 15
+        # Chờ 12 giây để hạ tầng Ngrok phân bổ liên kết công khai
+        Start-Sleep -Seconds 12
         
-        echo "=================== ĐỊA CHỈ KẾT NỐI CHÍNH THỨC CỦA BẠN ==================="
-        if (Test-Path gateway_output.log) {
-            Get-Content gateway_output.log
+        # Bước 3: Tải một công cụ dòng lệnh siêu nhẹ để bắt và in trực tiếp link Ngrok ra màn hình log
+        Invoke-WebRequest -Uri "http://127.0.0" -OutFile "tunnels.json"
+        
+        echo "=================== ĐỊA CHỈ KẾT NỐI MIỄN PHÍ CỦA BẠN ==================="
+        if (Test-Path tunnels.json) {
+            $json = Get-Content tunnels.json -Raw | ConvertFrom-Json
+            $publicUrl = $json.tunnels[0].public_url
+            
+            echo " ĐỊA CHỈ ĐĂNG NHẬP RDP (SỬ DỤNG TRÊN ĐIỆN THOẠI ANDROID 15):"
+            echo $publicUrl
+            echo "------------------------------------------------------------------------"
+            echo " CẤU HÌNH PHÁT LIVE RTMP CHO DJI MINI 3:"
+            echo "Sau khi bạn dùng Remote Desktop vào được màn hình máy ảo Windows,"
+            echo "hãy bật OBS Studio và điền địa chỉ luồng nhận nội bộ là:"
+            echo "rtmp://127.0.0.1/live/dji_stream"
+        } else {
+            echo "LỖI: Chưa lấy được link từ API Ngrok cục bộ."
         }
-        echo "=========================================================================="
+        echo "========================================================================"
         echo "--- KÊNH KIỂM TRA LOG HỆ THỐNG (NẾU CÓ LỖI) ---"
-        if (Test-Path gateway_error.log) { Get-Content gateway_error.log }
+        if (Test-Path ngrok_error.log) { Get-Content ngrok_error.log }
         
         # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
