@@ -14,15 +14,9 @@ jobs:
     steps:
     - name: Cài đặt phần mềm Hệ thống (Chocolatey)
       run: |
-        choco install obs-studio anydesk -y
+        # Cài đặt OBS Studio và RustDesk phiên bản Windows chính thức
+        choco install obs-studio rustdesk -y
 
-    - name: Cấu hình Mật khẩu truy cập AnyDesk ngầm
-      run: |
-        Write-Host "Setting up AnyDesk unattended access password..."
-        # Đảm bảo service của AnyDesk đã chạy trước khi set mật khẩu
-        Start-Service -Name "AnyDesk" -ErrorAction SilentlyContinue
-        echo RdpPassword2026! | & "C:\Program Files (x86)\AnyDesk\AnyDesk.exe" --set-password
-        
     - name: Deploy Light RTMP Server
       run: |
         Write-Host "Setting up live broadcast pipeline ports..."
@@ -40,43 +34,34 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Kích hoạt AnyDesk và Quét mã ID liên tục
+    - name: Khởi chạy RustDesk với ID và Mật khẩu tự chọn
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG KHỞI CHẠY ANYDESK VÀ ĐỢI MÁY CHỦ CẤP MÃ ID..."
+        echo "HỆ THỐNG ĐANG THIẾT LẬP RUSTDESK VỚI ID VÀ MẬT KHẨU CỦA BẠN..."
         echo "----------------------------------------------------------------------"
         
-        # Đường dẫn file chạy AnyDesk chính thức
-        $anydeskPath = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
+        # Đường dẫn thư mục cài đặt mặc định của RustDesk
+        $rustdesk = "C:\Program Files\RustDesk\rustdesk.exe"
         
-        # Vòng lặp quét liên tục trong tối đa 60 giây để chờ lấy bằng được ID
-        $timeout = 60
-        $anydeskId = ""
+        # Bước 1: Khởi chạy dịch vụ nền RustDesk
+        Start-Process $rustdesk -ArgumentList "--service"
+        Start-Sleep -Seconds 3
         
-        while ($timeout -gt 0) {
-            # Gọi lệnh lấy ID của AnyDesk và lưu ra biến tạm
-            $anydeskId = & $anydeskPath --get-id 2>$null
-            
-            # Làm sạch chuỗi dữ liệu nhận được (xóa khoảng trắng hoặc ký tự xuống dòng)
-            if ($anydeskId) { $anydeskId = $anydeskId.Trim() }
-            
-            # Nếu đã có chuỗi ID (thường gồm 9 chữ số), thoát vòng lặp
-            if ($anydeskId -match '^\d+$' -or ($anydeskId -and $anydeskId.Length -ge 9)) {
-                break
-            }
-            
-            Start-Sleep -Seconds 2
-            $timeout -= 2
-        }
+        # Bước 2: TỰ ĐẶT ID THEO Ý BẠN (Thay số 987654321 bằng số bất kỳ bạn muốn)
+        # Lưu ý: ID phải là chuỗi số từ 9 đến 10 ký tự tùy chọn
+        & $rustdesk --set-id 987654321
         
-        echo "=================== THÔNG TIN KẾT NỐI ANYDESK ==================="
-        if ($anydeskId) {
-            echo "MÃ SỐ ID ANYDESK MÁY ẢO CỦA BẠN LÀ: $anydeskId"
-        } else {
-            echo "LỖI: Máy chủ AnyDesk phản hồi quá chậm. Vui lòng bấm vào nút 'Re-run jobs' trên GitHub để thử lại."
-        }
+        # Bước 3: TỰ ĐẶT MẬT KHẨU TRUY CẬP CỐ ĐỊNH
+        & $rustdesk --password RdpPassword2026!
+        
+        Start-Sleep -Seconds 2
+        
+        echo "=================== THÔNG TIN KẾT NỐI RUSTDESK ==================="
+        echo "MÃ SỐ ID CỐ ĐỊNH TỰ CHỌN: 987654321"
         echo "MẬT KHẨU TRUY CẬP (PASSWORD): RdpPassword2026!"
-        echo "================================================================="
+        echo "=================================================================="
+        echo "Hãy mở phần mềm RustDesk trên máy tính ở nhà và nhập thông tin trên để vào máy ảo ngay."
+        echo "=================================================================="
         
         # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
