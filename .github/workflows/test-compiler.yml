@@ -30,9 +30,14 @@ jobs:
       - name: Deploy Local RTMP Server (MonaServer)
         run: |
           Write-Host "Downloading core media infrastructure components..."
-          # Using direct mirror link and curl.exe to bypass Cloudflare bot protection
-          curl.exe -L -o MonaServer.zip "https://downloads.sourceforge.net/project/monaserver/MonaServer_1.0.1.zip"
-          Expand-Archive -Path "MonaServer.zip" -DestinationPath "MonaServer"
+          curl.exe -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -o MonaServer.zip "https://downloads.sourceforge.net/project/monaserver/MonaServer_1.0.1.zip"
+          
+          $file = Get-Item "MonaServer.zip"
+          if ($file.Length -lt 100000) {
+              throw "Downloaded zip archive is invalid or incomplete (Size: $($file.Length) bytes)."
+          }
+          
+          Expand-Archive -Path "MonaServer.zip" -DestinationPath "MonaServer" -Force
           Start-Process -FilePath "MonaServer\MonaServer.exe" -WindowStyle Hidden
           Write-Host "MonaServer is active and listening on port 1935."
 
@@ -40,8 +45,7 @@ jobs:
         run: |
           $obsBinPath = "C:\Program Files\obs-studio\bin\64bit"
           if (!(Test-Path $obsBinPath)) { New-Item -ItemType Directory -Force -Path $obsBinPath }
-          # Updated with a valid direct download link or placeholder URL
-          curl.exe -L -o "$obsBinPath\opengl32.dll" "https://raw.githubusercontent.com/pal1000/save-open-gl-dll/master/opengl32.dll"
+          curl.exe -L -A "Mozilla/5.0" -o "$obsBinPath\opengl32.dll" "https://raw.githubusercontent.com/pal1000/save-open-gl-dll/master/opengl32.dll"
           Write-Host "Virtual Graphics Driver integrated successfully."
 
       - name: Create Multi-Tunnel Configuration File
