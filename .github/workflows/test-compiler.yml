@@ -68,11 +68,14 @@ jobs:
           Write-Host 'The free endpoint is temporary and may change after reconnecting. Use the newest tcp://hostname:port printed below.'
           Write-Host 'This workflow is manual-only and will stop when the GitHub-hosted job ends (maximum 6 hours).'
 
-          while ($true) {
+          $maxAttempts = 8
+          while ($attempt -lt $maxAttempts) {
             $attempt++
             Write-Host "Connecting Pinggy TCP tunnel (attempt $attempt)..."
-            & $sshCommand.Source -p 443 -R0:localhost:3389 -T -o StrictHostKeyChecking=accept-new -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 tcp@free.pinggy.io
+            & $sshCommand.Source -tt -p 443 -R0:localhost:3389 -v -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o ExitOnForwardFailure=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 tcp@free.pinggy.io
             $sshExitCode = $LASTEXITCODE
             Write-Host "Pinggy connection ended with exit code $sshExitCode. Retrying in 5 seconds; the next endpoint may be different."
             Start-Sleep -Seconds 5
           }
+
+          throw "Pinggy tunnel failed to remain connected after $maxAttempts attempts. Review the SSH diagnostics above."
