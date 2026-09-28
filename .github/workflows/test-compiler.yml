@@ -73,7 +73,8 @@ jobs:
             '-R', '3389:localhost:3389',
             '-hostkey', 'SHA256:nFd5rfJMGuZXvfeRzJ/BtT3TfksAxTWMajcrHRcI7AM',
             '-pwfile', $passwordFile,
-            '-t',
+            # Avoid Pinggy's rich terminal UI; -T emits basic endpoint information in Actions logs.
+            '-T',
             '-batch',
             '-no-antispoof',
             '-v',
