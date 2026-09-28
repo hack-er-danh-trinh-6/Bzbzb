@@ -43,20 +43,24 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (SỬA LỖI BIẾN XÁC THỰC)
+    - name: Start Network Services Gateway (XÁC THỰC QUA FILE CẤU HÌNH)
       run: |
         echo "----------------------------------------------------------------------"
         echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN QUA LOCALXPOSE..."
         echo "----------------------------------------------------------------------"
         
-        # Đ FIXED: Sửa tên biến môi trường thành LOCLX_ACCESS_TOKEN theo đúng chuẩn tài liệu nhà phát hành
-        $env:LOCLX_ACCESS_TOKEN = "${{ secrets.LOCALXPOSE_TOKEN }}"
+        # Đã sửa: Tự động ghi mã Token của bạn vào file cấu hình yaml cục bộ
+        $configContent = @"
+        access_token: "${{ secrets.LOCALXPOSE_TOKEN }}"
+        region: "ap"
+        "@
+        Set-Content -Path "config.yaml" -Value $configContent
         
-        # Kích hoạt hầm mạng công khai TCP hướng máy chủ Singapore (ap) về Việt Nam mượt nhất
-        Start-Process loclx -ArgumentList "tunnel tcp -t 3389 -g ap" -RedirectStandardOutput "rdp_tunnel.log" -RedirectStandardError "rdp_err.log"
-        Start-Process loclx -ArgumentList "tunnel tcp -t 1935 -g ap" -RedirectStandardOutput "rtmp_tunnel.log" -RedirectStandardError "rtmp_err.log"
+        # Khởi chạy hầm mạng và ép phần mềm đọc trực tiếp Token từ file cấu hình config.yaml vừa tạo
+        Start-Process loclx -ArgumentList "tunnel tcp -t 3389 -g ap --config config.yaml" -RedirectStandardOutput "rdp_tunnel.log" -RedirectStandardError "rdp_err.log"
+        Start-Process loclx -ArgumentList "tunnel tcp -t 1935 -g ap --config config.yaml" -RedirectStandardOutput "rtmp_tunnel.log" -RedirectStandardError "rtmp_err.log"
         
-        # Chờ 15 giây để hệ thống máy chủ đám mây LocalXpose thiết lập cổng Public
+        # Chờ 15 giây để máy chủ đám mây LocalXpose đồng bộ cụm máy chủ khu vực Châu Á
         Start-Sleep -Seconds 15
         
         echo "=================== ĐỊA CHỈ KẾT NỐI CHÍNH THỨC CỦA BẠN ==================="
