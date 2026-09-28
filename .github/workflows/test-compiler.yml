@@ -12,20 +12,17 @@ jobs:
     timeout-minutes: 360
 
     steps:
-    - name: Install System Dependencies (Chocolatey)
+    - name: Cài đặt phần mềm Hệ thống (Chocolatey)
       run: |
-        choco install obs-studio -y
+        # Tự động cài đặt OBS Studio và AnyDesk phiên bản Windows mới nhất
+        choco install obs-studio anydesk -y
 
-    - name: Enable Windows Remote Desktop Configuration
+    - name: Cấu hình Mật khẩu truy cập AnyDesk ngầm
       run: |
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+        Write-Host "Setting up AnyDesk unattended access password..."
+        # Thiết lập mật khẩu kết nối cố định là: RdpPassword2026!
+        echo RdpPassword2026! | & "C:\Program Files (x86)\AnyDesk\AnyDesk.exe" --set-password
         
-    - name: Configure System Access Password
-      run: |
-        net user runneradmin RdpPassword2026! /active:yes
-
     - name: Deploy Light RTMP Server
       run: |
         Write-Host "Setting up live broadcast pipeline ports..."
@@ -43,43 +40,27 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (HẠ TẦNG BORE KHÔNG LỖI ZIP)
+    - name: Kích hoạt AnyDesk và Lấy mã ID kết nối
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG TỰ ĐỘNG CẤP PHÁT PUBLIC IP QUA BORE TUNNEL..."
+        echo "HỆ THỐNG ĐANG KHỞI CHẠY ANYDESK TRÊN MÁY ẢO..."
         echo "----------------------------------------------------------------------"
         
-        # Ép nạp cấu hình mạng an toàn
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        # Khởi chạy dịch vụ AnyDesk và ép xuất mã số ID kết nối ra file log tạm thời
+        & "C:\Program Files (x86)\AnyDesk\AnyDesk.exe" --get-id > anydesk_id.log
         
-        # Tải trực tiếp file thực thi .exe của Bore từ máy chủ CDN sạch, KHÔNG CẦN GIẢI NÉN
-        Invoke-WebRequest -Uri "https://github.com" -OutFile "bore.exe"
+        # Chờ 8 giây để hệ thống AnyDesk toàn cầu cấp phát ID định danh máy ảo
+        Start-Sleep -Seconds 8
         
-        # Khởi chạy hầm mạng công khai kết nối thẳng tới máy chủ tự do bore.pub
-        # Tự động gán cổng ngẫu nhiên cho RDP (3389) và RTMP (1935)
-        Start-Process "bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "rdp_bore.log"
-        Start-Process "bore.exe" -ArgumentList "local 1935 --to bore.pub" -RedirectStandardOutput "rtmp_bore.log"
-        
-        # Chờ 12 giây để mạng đám mây đồng bộ luồng
-        Start-Sleep -Seconds 12
-        
-        echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
-        if (Test-Path rdp_bore.log) {
-            echo "THÔNG TIN CỔNG RDP (DÙNG ĐỂ VÀO ĐIỀU KHIỂN OBS):"
-            Get-Content rdp_bore.log | Select-String "listening at"
+        echo "=================== THÔNG TIN KẾT NỐI ANYDESK ==================="
+        if (Test-Path anydesk_id.log) {
+            $id = Get-Content anydesk_id.log
+            echo "MÃ SỐ ID ANYDESK MÁY ẢO CỦA BẠN LÀ: $id"
+        } else {
+            echo "Vui lòng đợi vài giây hoặc chạy lại lệnh để quét ID..."
         }
-        echo "---------------------------------------------------------------"
-        if (Test-Path rtmp_bore.log) {
-            echo "THÔNG TIN CỔNG RTMP (NHẬP VÀO TAY CẦM DJI MINI 3):"
-            $rtmpRaw = Get-Content rtmp_bore.log | Select-String "listening at"
-            if ($rtmpRaw) {
-                # Trích xuất số cổng từ chuỗi log của Bore để chuyển đổi thành link RTMP chuẩn
-                echo "Vui lòng lấy địa chỉ bore.pub:XXXXX ứng với log rtmp dưới đây,"
-                echo "sau đó đổi thành định dạng rtmp://bore.pub:XXXXX/live/dji_stream để nhập vào drone."
-                echo $rtmpRaw
-            }
-        }
-        echo "==============================================================="
+        echo "MẬT KHẨU TRUY CẬP (PASSWORD): RdpPassword2026!"
+        echo "================================================================="
         
         # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
