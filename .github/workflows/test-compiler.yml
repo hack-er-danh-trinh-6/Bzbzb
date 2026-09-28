@@ -40,9 +40,6 @@ jobs:
             rdp-tunnel:
               proto: tcp
               addr: 3389
-            rtmp-tunnel:
-              proto: tcp
-              addr: 1935
           "@
           Set-Content -Path "ngrok_config.yml" -Value $config
 
@@ -50,6 +47,6 @@ jobs:
         run: |
           echo "----------------------------------------------------------------------"
           echo "IP PUBLIC GATEWAY IS ACTIVE VIA SINGAPORE SERVER"
-          echo "Please check Ngrok Dashboard to retrieve RDP and RTMP addresses."
+          echo "Please check Ngrok Dashboard to retrieve RDP address."
           echo "----------------------------------------------------------------------"
-          ngrok start --config ngrok_config.yml --all
+          ngrok start rdp-tunnel --config ngrok_config.yml
