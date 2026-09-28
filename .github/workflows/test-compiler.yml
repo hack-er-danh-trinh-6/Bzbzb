@@ -43,37 +43,32 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (SỬA LỖI ĐƯỜNG TRUYỀN)
+    - name: Start Network Services Gateway (HIỂN THỊ LINK TÊN MIỀN)
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN CÔNG KHAI QUA LỢI THẾ SSH..."
+        echo "HỆ THỐNG ĐANG TỰ ĐỘNG CẤP PHÁT LINK KẾT NỐI MIỄN PHÍ..."
         echo "----------------------------------------------------------------------"
         
-        # Đã sửa: Khởi chạy kết nối hầm mạng qua localhost.run sử dụng các tham số triệt tiêu TTY
-        # Trích xuất dữ liệu log mạng trực tiếp bằng tệp lưu trữ cục bộ
-        Start-Process ssh -ArgumentList "-n -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 80:localhost:3389 nokey@localhost.run" -RedirectStandardOutput "rdp_public.log" -RedirectStandardError "rdp_err.log"
-        Start-Process ssh -ArgumentList "-n -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 80:localhost:1935 nokey@localhost.run" -RedirectStandardOutput "rtmp_public.log" -RedirectStandardError "rtmp_err.log"
+        # Tải bộ công cụ kết nối mạng trực tiếp từ máy chủ đám mây sạch
+        Invoke-WebRequest -Uri "https://pagekite.net" -OutFile "pagekite.py"
         
-        # Chờ 12 giây để hệ thống đám mây gán tên miền Public IP
-        $timeout = 12
-        while ($timeout -gt 0) {
-            Start-Sleep -Seconds 3
-            if ((Test-Path rdp_public.log) -and (Get-Content rdp_public.log)) {
-                echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
-                Get-Content rdp_public.log
-                Get-Content rtmp_public.log
-                echo "==============================================================="
-                break
-            }
-            $timeout -= 3
-        }
+        # Khởi chạy hầm mạng public trực tiếp cho cổng RDP (3389) và RTMP (1935)
+        $rdpName = "rdp-" + (Get-Random -Minimum 10000 -Maximum 99999)
+        $rtmpName = "rtmp-" + (Get-Random -Minimum 10000 -Maximum 99999)
         
-        # Nếu không có link, xuất log lỗi hệ thống để kiểm tra chéo
-        if ($timeout -le 0) {
-            echo "--- KIỂM TRA LOG HỆ THỐNG ---"
-            if (Test-Path rdp_err.log) { Get-Content rdp_err.log }
-            if (Test-Path rtmp_err.log) { Get-Content rtmp_err.log }
-        }
+        Start-Process python -ArgumentList "pagekite.py 3389 $rdpName.pagekite.me" -RedirectStandardOutput "rdp_dns.log"
+        Start-Process python -ArgumentList "pagekite.py 1935 $rtmpName.pagekite.me" -RedirectStandardOutput "rtmp_dns.log"
+        
+        # Chờ 12 giây để hệ thống đám mây định danh đường truyền
+        Start-Sleep -Seconds 12
+        
+        echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
+        echo "LIÊN KẾT RDP (DÙNG ĐỂ VÀO ĐIỀU KHIỂN OBS):"
+        echo "$rdpName.pagekite.me"
+        echo "---------------------------------------------------------------"
+        echo "LIÊN KẾT RTMP (NHẬP VÀO TAY CẦM DJI MINI 3):"
+        echo "rtmp://$rtmpName.pagekite.me/live/dji_stream"
+        echo "==============================================================="
         
         # Giữ máy ảo Windows Server hoạt động ổn định liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
