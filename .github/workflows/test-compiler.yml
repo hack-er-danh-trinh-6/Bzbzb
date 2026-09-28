@@ -33,31 +33,28 @@ jobs:
 
     - name: Inject Virtual Graphics Driver for OBS Studio
       run: |
-        $obsBinPath = "C:\Program Files\obs-studio\bin\64bit"
-        if (!(Test-Path $obsBinPath)) { New-Item -ItemType Directory -Force -Path $obsBinPath }
-        $dllUrl = "https://githubusercontent.com"
+        \$obsBinPath = "C:\Program Files\obs-studio\bin\64bit"
+        if (!(Test-Path \$obsBinPath)) { New-Item -ItemType Directory -Force -Path \(obsBinPath }\)dllUrl = "https://githubusercontent.com"
         try {
-            Invoke-WebRequest -Uri $dllUrl -OutFile "$obsBinPath\opengl32.dll" -TimeoutSec 60
+            Invoke-WebRequest -Uri dllUrl -OutFile "obsBinPath\opengl32.dll" -TimeoutSec 60
             Write-Host "Virtual Graphics Driver integrated successfully."
         } catch {
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (SỬA CÚ PHÁP ĐĂNG NHẬP)
+    - name: Start Network Services Gateway (XÁC THỰC TRỰC TIẾP TRONG LỆNH)
       run: |
         echo "----------------------------------------------------------------------"
         echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN QUA LOCALXPOSE..."
         echo "----------------------------------------------------------------------"
         
-        # Đ FIXED: Thay đổi cú pháp đăng nhập chuẩn không kèm flag --token
-        loclx account login "${{ secrets.LOCALXPOSE_TOKEN }}"
+        # Đ FIXED: Bỏ hoàn toàn bước 'account login'. 
+        # Truyền trực tiếp Token thông qua tham số --access-token (hoặc -t) trong lệnh tạo tunnel
         
-        # Khởi chạy hầm mạng công khai bằng giao thức TCP cho RDP (3389) và RTMP (1935)
-        # Sử dụng máy chủ khu vực Châu Á (ap) nhằm tối ưu ping truyền tải video về Việt Nam
-        Start-Process loclx -ArgumentList "tunnel tcp --to 3389 --region ap" -RedirectStandardOutput "rdp_tunnel.log" -RedirectStandardError "rdp_err.log"
-        Start-Process loclx -ArgumentList "tunnel tcp --to 1935 --region ap" -RedirectStandardOutput "rtmp_tunnel.log" -RedirectStandardError "rtmp_err.log"
+        Start-Process loclx -ArgumentList "tunnel tcp --to 3389 --region ap --access-token `${{ secrets.LOCALXPOSE_TOKEN }}`" -RedirectStandardOutput "rdp_tunnel.log" -RedirectStandardError "rdp_err.log"
+        Start-Process loclx -ArgumentList "tunnel tcp --to 1935 --region ap --access-token `${{ secrets.LOCALXPOSE_TOKEN }}`" -RedirectStandardOutput "rtmp_tunnel.log" -RedirectStandardError "rtmp_err.log"
         
-        # Chờ 15 giây để máy chủ đám mây LocalXpose thiết lập và cấp phát cổng Public
+        # Chờ 15 giây để máy chủ LocalXpose thiết lập và cấp phát cổng Public
         Start-Sleep -Seconds 15
         
         echo "=================== ĐỊA CHỈ KẾT NỐI CHÍNH THỨC CỦA BẠN ==================="
@@ -66,13 +63,13 @@ jobs:
         echo "------------------------------------------------------------------"
         echo "--- THÔNG TIN ĐƯỜNG HẦM RTMP (NHẬP VÀO TAY CẦM DJI MINI 3): ---"
         if (Test-Path rtmp_tunnel.log) {
-            $rtmpRaw = Get-Content rtmp_tunnel.log
-            echo "Địa chỉ thô: $rtmpRaw"
-            echo "Mẹo: Hãy copy địa chỉ IP/Tên miền dạng X.X.X.X:YYYYY hoặc tênmiền.loclx.io:YYYYY hiện ở trên,"
+            \$rtmpRaw = Get-Content rtmp_tunnel.log
+            echo "Địa chỉ thô: \$rtmpRaw"
+            echo "Mẹo: Hãy copy địa chỉ IP/Tên miền dạng X.X.X.X:YYYYY hoặc ap.loclx.io:YYYYY hiện ở trên,"
             echo "rồi viết lại thành rtmp://<địa_chỉ_đó>/live/dji_stream để điền vào drone."
         }
         echo "=========================================================================="
-        echo "--- KÊNH KIỂM TRA LOG LỖI HỆ THỐNG ---"
+        echo "--- KÊNH KIỂM TRA LOG HỆ THỐNG (NẾU CÓ LỖI) ---"
         if (Test-Path rdp_err.log) { Get-Content rdp_err.log }
         if (Test-Path rtmp_err.log) { Get-Content rtmp_err.log }
         
