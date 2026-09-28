@@ -2,6 +2,12 @@ name: Temporary Windows RDP and RTMP via Pinggy
 
 on:
   workflow_dispatch:
+    inputs:
+      install_obs:
+        description: Install OBS Studio only if you need to view or record the incoming RTMP stream
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -16,9 +22,27 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Install OBS Studio and PuTTY Plink
+      - name: Install OBS Studio (optional)
+        if: ${{ inputs.install_obs }}
         shell: pwsh
-        run: choco install obs-studio putty -y --no-progress
+        run: choco install obs-studio -y --no-progress
+
+      - name: Download and verify standalone PuTTY Plink
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $plinkPath = Join-Path $env:RUNNER_TEMP 'plink.exe'
+          $downloadUrl = 'https://the.earth.li/~sgtatham/putty/0.85/w64/plink.exe'
+          $expectedSha256 = '969f36879d5716aa1a9811f43a6a6510e8f08372dbeb9695b810b9c776f39c75'
+
+          Invoke-WebRequest -Uri $downloadUrl -OutFile $plinkPath
+          $actualSha256 = (Get-FileHash -Path $plinkPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            throw "Standalone Plink checksum mismatch: expected $expectedSha256 but received $actualSha256."
+          }
+
+          Add-Content -Path $env:GITHUB_PATH -Value $env:RUNNER_TEMP
+          Write-Host 'Verified standalone PuTTY Plink 0.85; the full PuTTY suite was not installed.'
 
       - name: Install and start MonaServer RTMP ingest
         shell: pwsh
@@ -144,10 +168,11 @@ jobs:
           @'
           ### Temporary remote access
           - Runner lifetime: at most 6 hours; this workflow retries each tunnel until the job timeout.
+          - OBS Studio is optional; it is installed only if selected when manually starting the workflow.
           - RDP and RTMP use separate temporary Pinggy endpoints. Follow the live logs for the newest `tcp://host:port` for each label.
           - Free endpoints can expire after about 60 minutes and rotate. RDP must reconnect; the DJI RTMP stream must be restarted with the new RTMP host and port.
           - DJI Fly: server address `rtmp://<RTMP-host>:<RTMP-port>/live`; stream key/name: choose a long, unpredictable value. MonaServer treats this as a stream path, not a password.
-          - MonaServer receives RTMP on local TCP 1935. OBS can read `rtmp://127.0.0.1:1935/live/<stream-name>`.
+          - MonaServer receives RTMP on local TCP 1935. If OBS was selected, open `rtmp://127.0.0.1:1935/live/<stream-name>` in OBS.
           '@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 
           $tunnelWorker = {
