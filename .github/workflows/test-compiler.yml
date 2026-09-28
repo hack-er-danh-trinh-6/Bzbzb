@@ -43,31 +43,26 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (SỬA LỖI HIỂN THỊ LINK)
+    - name: Start Network Services Gateway (FIX PSEUDO-TERMINAL)
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN CÔNG KHAI..."
-        echo "VUI LÒNG ĐỢI 5-10 GIÂY ĐỂ COPPY LINK KẾT NỐI HIỂN THỊ DƯỚI ĐÂY"
+        echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN CÔNG KHAI QUA SERVEO..."
         echo "----------------------------------------------------------------------"
         
-        # Đã sửa: Khởi chạy luồng mạng trực tiếp để ép in dữ liệu link kết nối ra màn hình Log
-        # Tạo song song tiến trình kết nối giữ mạng ổn định bằng tham số ServerAliveInterval
+        # ĐÃ SỬA: Bổ sung cờ -f (background), -N (no-command), -T (disable tty) để triệt tiêu lỗi terminal
+        # Lưu kết xuất thông tin máy chủ ra các file log tạm thời
         
-        $rdpJob = Start-Job -ScriptBlock {
-            ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:3389 tcp@free.pinggy.io
-        }
+        ssh -f -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:3389 serveo.net > rdp_link.log 2>&1
+        ssh -f -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:1935 serveo.net > rtmp_link.log 2>&1
         
-        $rtmpJob = Start-Job -ScriptBlock {
-            ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:1935 tcp@free.pinggy.io
-        }
-        
-        # Chờ 10 giây để máy chủ đám mây Pinggy cấp phát xong địa chỉ IP Public
-        Start-Sleep -Seconds 10
+        # Chờ 8 giây để Serveo thiết lập và cấp phát cổng Public kết nối thành công
+        Start-Sleep -Seconds 8
         
         echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
-        Receive-Job -Job $rdpJob
-        Receive-Job -Job $rtmpJob
+        if (Test-Path rdp_link.log) { Get-Content rdp_link.log }
+        if (Test-Path rtmp_link.log) { Get-Content rtmp_link.log }
+        echo "Nếu không thấy link xuất hiện ở trên, hãy chạy lại lệnh bên dưới để đọc trực tiếp:"
         echo "==============================================================="
         
-        # Giữ máy ảo hoạt động liên tục trong 6 tiếng để livestream không bị ngắt giữa chừng
+        # Giữ máy ảo Windows Server hoạt động ổn định liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
