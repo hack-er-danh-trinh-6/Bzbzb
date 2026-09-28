@@ -43,26 +43,28 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (FIX PSEUDO-TERMINAL)
+    - name: Start Network Services Gateway (IN LINK TRỰC TIẾP)
       run: |
         echo "----------------------------------------------------------------------"
         echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN CÔNG KHAI QUA SERVEO..."
         echo "----------------------------------------------------------------------"
         
-        # ĐÃ SỬA: Bổ sung cờ -f (background), -N (no-command), -T (disable tty) để triệt tiêu lỗi terminal
-        # Lưu kết xuất thông tin máy chủ ra các file log tạm thời
+        # Đmanager: Chuyển hướng xuất file log trực tiếp bằng Powershell Job để không bị kẹt luồng văn bản
+        $rdpJob = Start-Job -ScriptBlock {
+            ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:3389 serveo.net
+        }
         
-        ssh -f -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:3389 serveo.net > rdp_link.log 2>&1
-        ssh -f -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:1935 serveo.net > rtmp_link.log 2>&1
+        $rtmpJob = Start-Job -ScriptBlock {
+            ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:1935 serveo.net
+        }
         
-        # Chờ 8 giây để Serveo thiết lập và cấp phát cổng Public kết nối thành công
-        Start-Sleep -Seconds 8
+        # Chờ 12 giây để hệ thống đám mây phân bổ cổng kết nối ngẫu nhiên
+        Start-Sleep -Seconds 12
         
         echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
-        if (Test-Path rdp_link.log) { Get-Content rdp_link.log }
-        if (Test-Path rtmp_link.log) { Get-Content rtmp_link.log }
-        echo "Nếu không thấy link xuất hiện ở trên, hãy chạy lại lệnh bên dưới để đọc trực tiếp:"
+        Receive-Job -Job $rdpJob
+        Receive-Job -Job $rtmpJob
         echo "==============================================================="
         
-        # Giữ máy ảo Windows Server hoạt động ổn định liên tục trong 6 tiếng để thực hiện Livestream
+        # Duy trì máy ảo hoạt động ổn định trong 6 tiếng để truyền tải dữ liệu drone
         Start-Sleep -Seconds 21600
