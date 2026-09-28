@@ -14,8 +14,8 @@ jobs:
     steps:
     - name: Install System Dependencies (Chocolatey)
       run: |
-        # Cài đặt phần mềm OBS Studio trên máy ảo
-        choco install obs-studio -y
+        # Đstyle: Cài đặt chính thức OBS Studio và LocalXpose qua chợ ứng dụng Chocolatey
+        choco install obs-studio localxpose -y
 
     - name: Enable Windows Remote Desktop Configuration
       run: |
@@ -44,24 +44,20 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (HẠ TẦNG LOCALXPOSE)
+    - name: Start Network Services Gateway (SỬA LỖI TẢI LOCALXPOSE)
       run: |
         echo "----------------------------------------------------------------------"
         echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN QUA LOCALXPOSE..."
         echo "----------------------------------------------------------------------"
         
-        # Tải tệp thực thi của LocalXpose (.exe) phiên bản Windows chính thức
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri "https://digitaloceanspaces.com" -OutFile "loclx.zip"
-        tar -xf loclx.zip
-        
-        # Xác thực đại lý mạng bằng mã Token bảo mật của bạn
-        .\loclx.exe account login --token "${{ secrets.LOCALXPOSE_TOKEN }}"
+        # Gọi lệnh trực tiếp từ biến hệ thống đã cài qua Chocolatey
+        # Xác thực bằng mã Token bảo mật của bạn
+        loclx account login --token "${{ secrets.LOCALXPOSE_TOKEN }}"
         
         # Khởi chạy hầm mạng công khai bằng giao thức TCP cho cổng RDP (3389) và RTMP (1935)
-        # Sử dụng cụm máy chủ Singapore (ap) để tối ưu ping mượt nhất về Việt Nam
-        Start-Process ".\loclx.exe" -ArgumentList "tunnel tcp --to 3389 --region ap" -RedirectStandardOutput "rdp_tunnel.log"
-        Start-Process ".\loclx.exe" -ArgumentList "tunnel tcp --to 1935 --region ap" -RedirectStandardOutput "rtmp_tunnel.log"
+        # Sử dụng cụm máy chủ khu vực Châu Á (ap) để tối ưu ping mượt nhất về Việt Nam
+        Start-Process loclx -ArgumentList "tunnel tcp --to 3389 --region ap" -RedirectStandardOutput "rdp_tunnel.log"
+        Start-Process loclx -ArgumentList "tunnel tcp --to 1935 --region ap" -RedirectStandardOutput "rtmp_tunnel.log"
         
         # Chờ 15 giây để máy chủ đồng bộ cấu hình mạng
         Start-Sleep -Seconds 15
@@ -90,4 +86,3 @@ jobs:
         
         # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
-        
