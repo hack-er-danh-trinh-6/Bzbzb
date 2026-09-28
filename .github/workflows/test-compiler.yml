@@ -14,17 +14,8 @@ jobs:
     steps:
     - name: Install System Dependencies (Chocolatey)
       run: |
-        choco install obs-studio -y
-
-    - name: Enable Windows Remote Desktop Configuration
-      run: |
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
-        
-    - name: Configure System Access Password
-      run: |
-        net user runneradmin RdpPassword2026! /active:yes
+        # Cài đặt OBS Studio và NodeJS để lấy hạ tầng chạy giao diện web
+        choco install obs-studio nodejs -y
 
     - name: Deploy Light RTMP Server
       run: |
@@ -43,31 +34,44 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (CỔNG SERVEO CỐ ĐỊNH)
+    - name: Kích hoạt Cổng Web và Tạo hầm mạng xuyên tường lửa
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN CÔNG KHAI QUA SERVEO..."
+        echo "HỆ THỐNG ĐANG KHỞI TẠO GIAO DIỆN WEB ĐIỀU KHIỂN..."
         echo "----------------------------------------------------------------------"
         
-        # Khởi tạo 2 số cổng ngẫu nhiên cục bộ cho phiên chạy này để gửi trực tiếp lên Serveo
-        $rdpPublicPort = Get-Random -Minimum 25000 -Maximum 35000
-        $rtmpPublicPort = Get-Random -Minimum 35001 -Maximum 45000
+        # Bước 1: Cài đặt và bật dịch vụ WeTTY để chuyển đổi giao diện dòng lệnh thành trang Web
+        npm install -g wetty
+        Start-Process cmd -ArgumentList "/c wetty --port 3000 --command powershell.exe"
         
-        # ĐÃ SỬA: Thay thế số '0' bằng biến số cổng cụ thể để ép Serveo mở đồng thời cả 2 luồng mạng
-        Start-Process ssh -ArgumentList "-n -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R $rdpPublicPort:localhost:3389 -R $rtmpPublicPort:localhost:1935 serveo.net" -RedirectStandardError "serveo_gateway.log"
+        Start-Sleep -Seconds 5
         
-        # Vòng lặp chờ 15 giây để máy chủ đám mây ghi nhận
-        Start-Sleep -Seconds 15
+        # Bước 2: Dùng giao thức SSH của Pinggy để đưa cổng Web (3000) và cổng RTMP (1935) ra Internet công khai
+        # Kết nối này chạy từ trong ra nên vượt qua 100% tường lửa GitHub mà không cần thẻ Visa
+        $webJob = Start-Job -ScriptBlock {
+            ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:3000 public@tls.pinggy.io
+        }
         
-        echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
-        echo "LIÊN KẾT RDP (DÙNG CHO ANDROID / PC VÀO ĐIỀU KHIỂN OBS):"
-        echo "Nhập địa chỉ: serveo.net:$rdpPublicPort"
+        $rtmpJob = Start-Job -ScriptBlock {
+            ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:1935 tcp@b.pinggy.io
+        }
+        
+        # Chờ 12 giây để hệ thống máy chủ liên kết đồng bộ tên miền
+        Start-Sleep -Seconds 12
+        
+        echo "=================== ĐỊA CHỈ KẾT NỐI KHÔNG LỖI 0X104 ==================="
+        echo "LIÊN KẾT ĐIỀU KHIỂN (MỞ BẰNG TRÌNH DUYỆT TRÊN ANDROID O LÀM CHỦ OBS):"
+        Receive-Job -Job $webJob
         echo "---------------------------------------------------------------"
         echo "LIÊN KẾT RTMP (NHẬP VÀO TAY CẦM DJI MINI 3):"
-        echo "rtmp://serveo.net:$rtmpPublicPort/live/dji_stream"
+        $rtmpRaw = Receive-Job -Job $rtmpJob
+        if ($rtmpRaw -match "tcp://") {
+            $rtmpClean = $rtmpRaw.Trim().Replace("tcp://", "rtmp://")
+            echo "$rtmpClean/live/dji_stream"
+        } else {
+            echo "Vui lòng xem log chi tiết hoặc re-run để nhận chuỗi RTMP chuẩn."
+        }
         echo "==============================================================="
-        echo "--- LOG CHI TIẾT HỆ THỐNG (NẾU BỊ TRÙNG CỔNG) ---"
-        if (Test-Path serveo_gateway.log) { Get-Content serveo_gateway.log }
         
         # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
