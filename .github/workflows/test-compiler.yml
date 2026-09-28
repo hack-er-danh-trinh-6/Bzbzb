@@ -14,8 +14,18 @@ jobs:
     steps:
     - name: Install System Dependencies (Chocolatey)
       run: |
-        # Cài đặt OBS Studio, NodeJS và máy chủ màn hình ảo VNC Server
-        choco install obs-studio nodejs ultraVNC -y
+        # Cài đặt phần mềm OBS Studio trên máy ảo
+        choco install obs-studio -y
+
+    - name: Enable Windows Remote Desktop Configuration
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+        
+    - name: Configure System Access Password
+      run: |
+        net user runneradmin RdpPassword2026! /active:yes
 
     - name: Deploy Light RTMP Server
       run: |
@@ -34,47 +44,50 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Cấu hình Màn hình ảo Web (noVNC Gateway)
+    - name: Start Network Services Gateway (HẠ TẦNG LOCALXPOSE)
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG CHUYỂN ĐỔI MÀN HÌNH MÁY ẢO THÀNH GIAO DIỆN WEB..."
+        echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN QUA LOCALXPOSE..."
         echo "----------------------------------------------------------------------"
         
-        # Cài đặt công cụ chuyển đổi giao thức VNC sang WebSockets (noVNC)
-        npm install -g novnc
+        # Tải tệp thực thi của LocalXpose (.exe) phiên bản Windows chính thức
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri "https://digitaloceanspaces.com" -OutFile "loclx.zip"
+        tar -xf loclx.zip
         
-        # Cấu hình đặt mật khẩu cho UltraVNC Server chạy ngầm để bảo mật
-        $vncPath = "C:\Program Files\UltraVNC\winvnc.exe"
-        Start-Process $vncPath -ArgumentList "-install"
-        Start-Sleep -Seconds 2
+        # Xác thực đại lý mạng bằng mã Token bảo mật của bạn
+        .\loclx.exe account login --token "${{ secrets.LOCALXPOSE_TOKEN }}"
         
-        # Khởi chạy cổng noVNC lắng nghe tại cổng Web 6080 nội bộ
-        Start-Process cmd -ArgumentList "/c novnc --vnc localhost:5900 --listen 6080"
-        Start-Sleep -Seconds 3
+        # Khởi chạy hầm mạng công khai bằng giao thức TCP cho cổng RDP (3389) và RTMP (1935)
+        # Sử dụng cụm máy chủ Singapore (ap) để tối ưu ping mượt nhất về Việt Nam
+        Start-Process ".\loclx.exe" -ArgumentList "tunnel tcp --to 3389 --region ap" -RedirectStandardOutput "rdp_tunnel.log"
+        Start-Process ".\loclx.exe" -ArgumentList "tunnel tcp --to 1935 --region ap" -RedirectStandardOutput "rtmp_tunnel.log"
         
-        # Khởi chạy hầm mạng ngược Pinggy đưa cổng Web (6080) và cổng RTMP (1935) ra ngoài Internet
-        $webJob = Start-Job -ScriptBlock {
-            ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:6080 public@tls.pinggy.io
+        # Chờ 15 giây để máy chủ đồng bộ cấu hình mạng
+        Start-Sleep -Seconds 15
+        
+        echo "=================== ĐỊA CHỈ KẾT NỐI CHÍNH THỨC ==================="
+        if (Test-Path rdp_tunnel.log) {
+            echo " ĐỊA CHỈ RDP (DÙNG ĐỂ VÀO ĐIỀU KHIỂN OBS TRÊN ĐIỆN THOẠI):"
+            Get-Content rdp_tunnel.log | Select-String "us.loclx.io|eu.loclx.io|ap.loclx.io"
         }
-        
-        $rtmpJob = Start-Job -ScriptBlock {
-            ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:1935 tcp@b.pinggy.io
+        echo "------------------------------------------------------------------"
+        if (Test-Path rtmp_tunnel.log) {
+            echo " ĐỊA CHỈ RTMP (NHẬP VÀO TAY CẦM DJI MINI 3):"
+            $rtmpRaw = Get-Content rtmp_tunnel.log | Select-String "us.loclx.io|eu.loclx.io|ap.loclx.io"
+            if ($rtmpRaw) {
+                # Chuyển đổi định dạng log thô thành chuỗi rtmp:// chuẩn cho DJI Fly
+                $rtmpClean = $rtmpRaw.ToString().Trim()
+                echo "rtmp://$rtmpClean/live/dji_stream"
+            }
         }
+        echo "=================================================================="
+        echo "Nếu khung trên trống hoặc hiển thị lỗi, xem dữ liệu log chi tiết dưới đây:"
+        echo "------------------------------------------------------------------"
+        if (Test-Path rdp_tunnel.log) { Get-Content rdp_tunnel.log }
+        if (Test-Path rtmp_tunnel.log) { Get-Content rtmp_tunnel.log }
+        echo "=================================================================="
         
-        Start-Sleep -Seconds 12
-        
-        echo "=================== ĐỊA CHỈ TRUY CẬP TRÊN ANDROID 15 ==================="
-        echo " ĐƯỜNG LINK ĐIỀU KHIỂN GIAO DIỆN OBS (MỞ BẰNG WEB CHROME):"
-        $webUrl = Receive-Job -Job $webJob
-        if ($webUrl) { echo "$webUrl/vnc.html" }
-        echo "------------------------------------------------------------------------"
-        echo " ĐỊA CHỈ NHẬP VÀO TAY CẦM DJI MINI 3 (MỤC RTMP):"
-        $rtmpRaw = Receive-Job -Job $rtmpJob
-        if ($rtmpRaw -match "tcp://") {
-            $rtmpClean = $rtmpRaw.Trim().Replace("tcp://", "rtmp://")
-            echo "$rtmpClean/live/dji_stream"
-        }
-        echo "========================================================================"
-        
-        # Duy trì máy ảo hoạt động liên tục trong 6 tiếng để thực hiện phát sóng
+        # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
+        
