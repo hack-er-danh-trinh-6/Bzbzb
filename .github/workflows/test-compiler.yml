@@ -14,7 +14,6 @@ jobs:
     steps:
     - name: Install System Dependencies (Chocolatey)
       run: |
-        # Chỉ cần cài đặt duy nhất OBS Studio cho máy ảo
         choco install obs-studio -y
 
     - name: Enable Windows Remote Desktop Configuration
@@ -44,19 +43,31 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (Pinggy TCP Tunnels)
+    - name: Start Network Services Gateway (SỬA LỖI HIỂN THỊ LINK)
       run: |
         echo "----------------------------------------------------------------------"
-        echo "DANG KHOI TAO CONG KET NOI CONG KHAI - KHONG CAN THE"
-        echo "He thong se cap link RDP va RTMP ngay ben duoi day"
+        echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN CÔNG KHAI..."
+        echo "VUI LÒNG ĐỢI 5-10 GIÂY ĐỂ COPPY LINK KẾT NỐI HIỂN THỊ DƯỚI ĐÂY"
         echo "----------------------------------------------------------------------"
         
-        # Mở cổng 3389 (RDP) thông qua dịch vụ Pinggy qua giao thức SSH công khai
-        Start-Process ssh -ArgumentList "-o StrictHostKeyChecking=no -p 443 -R 0:localhost:3389 tcp@b.pinggy.io" -WindowStyle Normal
+        # Đã sửa: Khởi chạy luồng mạng trực tiếp để ép in dữ liệu link kết nối ra màn hình Log
+        # Tạo song song tiến trình kết nối giữ mạng ổn định bằng tham số ServerAliveInterval
         
-        # Mở cổng 1935 (RTMP) kết nối thẳng cho DJI Mini 3 
-        Start-Process ssh -ArgumentList "-o StrictHostKeyChecking=no -p 443 -R 0:localhost:1935 tcp@b.pinggy.io" -WindowStyle Normal
+        $rdpJob = Start-Job -ScriptBlock {
+            ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:3389 tcp@free.pinggy.io
+        }
         
-        # Lệnh giữ luồng chạy liên tục để máy ảo không tự tắt
+        $rtmpJob = Start-Job -ScriptBlock {
+            ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:1935 tcp@free.pinggy.io
+        }
+        
+        # Chờ 10 giây để máy chủ đám mây Pinggy cấp phát xong địa chỉ IP Public
+        Start-Sleep -Seconds 10
+        
+        echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
+        Receive-Job -Job $rdpJob
+        Receive-Job -Job $rtmpJob
+        echo "==============================================================="
+        
+        # Giữ máy ảo hoạt động liên tục trong 6 tiếng để livestream không bị ngắt giữa chừng
         Start-Sleep -Seconds 21600
-        
