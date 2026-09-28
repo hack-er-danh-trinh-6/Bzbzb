@@ -69,7 +69,8 @@ jobs:
           $plinkArgs = @(
             '-ssh',
             '-P', '443',
-            '-R', '0:localhost:3389',
+            # Plink rejects source port 0; Pinggy's free service assigns its own public port.
+            '-R', '3389:localhost:3389',
             '-hostkey', 'SHA256:nFd5rfJMGuZXvfeRzJ/BtT3TfksAxTWMajcrHRcI7AM',
             '-pwfile', $passwordFile,
             '-t',
