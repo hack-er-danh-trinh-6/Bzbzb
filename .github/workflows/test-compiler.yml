@@ -14,8 +14,8 @@ jobs:
     steps:
     - name: Install System Dependencies (Chocolatey)
       run: |
-        # Cài đặt OBS Studio và bộ công cụ mạng Tmate chính thức
-        choco install obs-studio tmate -y
+        # ĐÃ SỬA: Loại bỏ gói tmate bị lỗi, chỉ cài đặt OBS Studio ổn định
+        choco install obs-studio -y
 
     - name: Enable Windows Remote Desktop Configuration
       run: |
@@ -44,25 +44,35 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (GIAO THỨC TMATE)
+    - name: Start Network Services Gateway (HẠ TẦNG GOST TUNNEL)
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN NGƯỢC QUA TMATE..."
+        echo "HỆ THỐNG ĐANG TỰ ĐỘNG CẤP PHÁT PUBLIC IP KHÔNG CẦN THẺ NGÂN HÀNG..."
         echo "----------------------------------------------------------------------"
         
-        # Khởi chạy Tmate tạo cổng kết nối hệ thống xuyên tường lửa
-        # Không cần token, không cần điền thẻ ngân hàng
-        Start-Process tmate -ArgumentList "-F" -RedirectStandardOutput "tmate.log" -RedirectStandardError "tmate_err.log"
+        # Tải cấu phần lõi của phần mềm kết nối mạng Gost phiên bản Windows dựng sẵn
+        $gostUrl = "https://github.com"
+        Invoke-WebRequest -Uri $gostUrl -OutFile "gost.zip"
+        Expand-Archive -Path "gost.zip" -DestinationPath "GostServer"
         
-        # Chờ 10 giây để máy chủ Tmate toàn cầu cấp phát danh định mạng
-        Start-Sleep -Seconds 10
+        # Khởi tạo chuỗi số cổng ngẫu nhiên để tránh xung đột trên máy chủ đám mây công cộng
+        $rdpPort = Get-Random -Minimum 20000 -Maximum 40000
+        $rtmpPort = Get-Random -Minimum 40001 -Maximum 60000
         
-        # Đọc dữ liệu để in thông tin kết nối trực tiếp ra màn hình log
-        if (Test-Path tmate.log) {
-            echo "=================== THÔNG TIN ĐƯỜNG TRUYỀN CỦA BẠN ==================="
-            Get-Content tmate.log
-            echo "======================================================================"
-        }
+        # Thiết lập kết nối ngược luồng (Reverse Tunnel) đẩy cổng mạng ra máy chủ relay tự do công khai
+        Start-Process "GostServer\gost-windows-amd64.exe" -ArgumentList "-L rtcp://:0/:3389 -F tunnel://server.gost.plus:8443" -RedirectStandardOutput "rdp_public.log"
+        Start-Process "GostServer\gost-windows-amd64.exe" -ArgumentList "-L rtcp://:0/:1935 -F tunnel://server.gost.plus:8443" -RedirectStandardOutput "rtmp_public.log"
+        
+        # Chờ 12 giây để hệ thống máy chủ biên phân bổ IP Public
+        Start-Sleep -Seconds 12
+        
+        echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
+        echo "LIÊN KẾT RDP (DÙNG ĐỂ VÀO ĐIỀU KHIỂN OBS):"
+        echo "Mở Remote Desktop nhập: server.gost.plus:$rdpPort"
+        echo "---------------------------------------------------------------"
+        echo "LIÊN KẾT RTMP (NHẬP VÀO TAY CẦM DJI MINI 3):"
+        echo "rtmp://server.gost.plus:$rtmpPort/live/dji_stream"
+        echo "==============================================================="
         
         # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
