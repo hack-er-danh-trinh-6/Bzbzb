@@ -14,7 +14,8 @@ jobs:
     steps:
     - name: Install System Dependencies (Chocolatey)
       run: |
-        choco install obs-studio -y
+        # Cài đặt đồng thời OBS Studio và NodeJS để lấy hạ tầng mở cổng LocalTunnel
+        choco install obs-studio nodejs -y
 
     - name: Enable Windows Remote Desktop Configuration
       run: |
@@ -43,32 +44,38 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (HIỂN THỊ LINK TÊN MIỀN)
+    - name: Start Network Services Gateway (SỬA LỖI 0X104)
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG TỰ ĐỘNG CẤP PHÁT LINK KẾT NỐI MIỄN PHÍ..."
+        echo "HỆ THỐNG ĐANG TỰ ĐỘNG CẤP PHÁT PUBLIC IP KHÔNG CẦN THẺ NGÂN HÀNG..."
         echo "----------------------------------------------------------------------"
         
-        # Tải bộ công cụ kết nối mạng trực tiếp từ máy chủ đám mây sạch
-        Invoke-WebRequest -Uri "https://pagekite.net" -OutFile "pagekite.py"
+        # Cài đặt bộ công cụ LocalTunnel mở cổng TCP không cần tài khoản mạng công khai
+        npm install -g localtunnel
         
-        # Khởi chạy hầm mạng public trực tiếp cho cổng RDP (3389) và RTMP (1935)
-        $rdpName = "rdp-" + (Get-Random -Minimum 10000 -Maximum 99999)
-        $rtmpName = "rtmp-" + (Get-Random -Minimum 10000 -Maximum 99999)
+        # Khởi chạy cổng kết nối trực tiếp cho RDP (3389) và RTMP (1935)
+        Start-Process lt -ArgumentList "--port 3389" -RedirectStandardOutput "rdp_public.log"
+        Start-Process lt -ArgumentList "--port 1935" -RedirectStandardOutput "rtmp_public.log"
         
-        Start-Process python -ArgumentList "pagekite.py 3389 $rdpName.pagekite.me" -RedirectStandardOutput "rdp_dns.log"
-        Start-Process python -ArgumentList "pagekite.py 1935 $rtmpName.pagekite.me" -RedirectStandardOutput "rtmp_dns.log"
-        
-        # Chờ 12 giây để hệ thống đám mây định danh đường truyền
-        Start-Sleep -Seconds 12
+        # Chờ 15 giây để máy chủ phân bổ cụm tên miền Public hoàn toàn miễn phí
+        Start-Sleep -Seconds 15
         
         echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
-        echo "LIÊN KẾT RDP (DÙNG ĐỂ VÀO ĐIỀU KHIỂN OBS):"
-        echo "$rdpName.pagekite.me"
+        if (Test-Path rdp_public.log) {
+            $rdpRaw = Get-Content rdp_public.log
+            # Định dạng và in địa chỉ tên miền để copy thẳng vào Remote Desktop
+            echo "LIÊN KẾT RDP (DÙNG ĐỂ VÀO ĐIỀU KHIỂN OBS):"
+            echo $rdpRaw
+        }
         echo "---------------------------------------------------------------"
-        echo "LIÊN KẾT RTMP (NHẬP VÀO TAY CẦM DJI MINI 3):"
-        echo "rtmp://$rtmpName.pagekite.me/live/dji_stream"
+        if (Test-Path rtmp_public.log) {
+            $rtmpRaw = Get-Content rtmp_public.log
+            # Chuyển đổi giao thức hiển thị sang rtmp dành cho thiết bị DJI Mini 3
+            $rtmpClean = $rtmpRaw.Replace("https://", "rtmp://").Replace("http://", "rtmp://")
+            echo "LIÊN KẾT RTMP (NHẬP VÀO TAY CẦM DJI MINI 3):"
+            echo "$rtmpClean/live/dji_stream"
+        }
         echo "==============================================================="
         
-        # Giữ máy ảo Windows Server hoạt động ổn định liên tục trong 6 tiếng để thực hiện Livestream
+        # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
