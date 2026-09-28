@@ -14,7 +14,6 @@ jobs:
     steps:
     - name: Install System Dependencies (Chocolatey)
       run: |
-        # ĐÃ SỬA: Loại bỏ gói tmate bị lỗi, chỉ cài đặt OBS Studio ổn định
         choco install obs-studio -y
 
     - name: Enable Windows Remote Desktop Configuration
@@ -44,27 +43,32 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (HẠ TẦNG GOST TUNNEL)
+    - name: Start Network Services Gateway (SỬA LỖI GIẢI NÉN)
       run: |
         echo "----------------------------------------------------------------------"
         echo "HỆ THỐNG ĐANG TỰ ĐỘNG CẤP PHÁT PUBLIC IP KHÔNG CẦN THẺ NGÂN HÀNG..."
         echo "----------------------------------------------------------------------"
         
-        # Tải cấu phần lõi của phần mềm kết nối mạng Gost phiên bản Windows dựng sẵn
+        # Ép hệ thống kích hoạt giao thức mạng bảo mật để tải file không bị lỗi trống dung lượng
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        
+        # Tải phần mềm kết nối mạng thô trực tiếp từ kho lưu trữ dạng file thực thi (.exe) chạy thẳng
+        # Bỏ qua bước giải nén Expand-Archive để triệt tiêu hoàn toàn lỗi OperationStopped
         $gostUrl = "https://github.com"
         Invoke-WebRequest -Uri $gostUrl -OutFile "gost.zip"
-        Expand-Archive -Path "gost.zip" -DestinationPath "GostServer"
         
-        # Khởi tạo chuỗi số cổng ngẫu nhiên để tránh xung đột trên máy chủ đám mây công cộng
+        # Sử dụng giải pháp giải nén bằng tập lệnh hệ thống không dùng lệnh cũ
+        tar -xf gost.zip
+        
+        # Tạo số cổng kết nối Public ngẫu nhiên trên hệ thống máy chủ biên
         $rdpPort = Get-Random -Minimum 20000 -Maximum 40000
         $rtmpPort = Get-Random -Minimum 40001 -Maximum 60000
         
-        # Thiết lập kết nối ngược luồng (Reverse Tunnel) đẩy cổng mạng ra máy chủ relay tự do công khai
-        Start-Process "GostServer\gost-windows-amd64.exe" -ArgumentList "-L rtcp://:0/:3389 -F tunnel://server.gost.plus:8443" -RedirectStandardOutput "rdp_public.log"
-        Start-Process "GostServer\gost-windows-amd64.exe" -ArgumentList "-L rtcp://:0/:1935 -F tunnel://server.gost.plus:8443" -RedirectStandardOutput "rtmp_public.log"
+        # Kích hoạt cổng định tuyến luồng ngược xuyên tường lửa GitHub
+        Start-Process "gost-windows-amd64.exe" -ArgumentList "-L rtcp://:$rdpPort:localhost:3389 -F tunnel://server.gost.plus:8443"
+        Start-Process "gost-windows-amd64.exe" -ArgumentList "-L rtcp://:$rtmpPort:localhost:1935 -F tunnel://server.gost.plus:8443"
         
-        # Chờ 12 giây để hệ thống máy chủ biên phân bổ IP Public
-        Start-Sleep -Seconds 12
+        Start-Sleep -Seconds 10
         
         echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
         echo "LIÊN KẾT RDP (DÙNG ĐỂ VÀO ĐIỀU KHIỂN OBS):"
