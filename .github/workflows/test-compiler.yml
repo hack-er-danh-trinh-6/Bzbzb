@@ -14,8 +14,8 @@ jobs:
     steps:
     - name: Install System Dependencies (Chocolatey)
       run: |
-        # Cài đặt đồng thời OBS Studio và NodeJS để lấy hạ tầng mở cổng LocalTunnel
-        choco install obs-studio nodejs -y
+        # Cài đặt OBS Studio và bộ công cụ mạng Tmate chính thức
+        choco install obs-studio tmate -y
 
     - name: Enable Windows Remote Desktop Configuration
       run: |
@@ -44,45 +44,24 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (SỬA LỖI WIN32 APPLICATION)
+    - name: Start Network Services Gateway (GIAO THỨC TMATE)
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG TỰ ĐỘNG CẤP PHÁT PUBLIC IP KHÔNG CẦN THẺ NGÂN HÀNG..."
+        echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN NGƯỢC QUA TMATE..."
         echo "----------------------------------------------------------------------"
         
-        # Cài đặt bộ công cụ LocalTunnel mở cổng TCP không cần tài khoản mạng công khai
-        npm install -g localtunnel
+        # Khởi chạy Tmate tạo cổng kết nối hệ thống xuyên tường lửa
+        # Không cần token, không cần điền thẻ ngân hàng
+        Start-Process tmate -ArgumentList "-F" -RedirectStandardOutput "tmate.log" -RedirectStandardError "tmate_err.log"
         
-        # Đfixed: Khởi chạy lệnh qua môi trường cmd /c npx để Windows thực thi script Node.js chính xác
-        Start-Process cmd -ArgumentList "/c npx localtunnel --port 3389" -RedirectStandardOutput "rdp_public.log" -RedirectStandardError "rdp_err.log"
-        Start-Process cmd -ArgumentList "/c npx localtunnel --port 1935" -RedirectStandardOutput "rtmp_public.log" -RedirectStandardError "rtmp_err.log"
+        # Chờ 10 giây để máy chủ Tmate toàn cầu cấp phát danh định mạng
+        Start-Sleep -Seconds 10
         
-        # Chờ 15 giây để máy chủ phân bổ cụm tên miền Public hoàn toàn miễn phí
-        $timeout = 15
-        while ($timeout -gt 0) {
-            Start-Sleep -Seconds 3
-            if ((Test-Path rdp_public.log) -and (Get-Content rdp_public.log)) {
-                echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
-                echo "LIÊN KẾT RDP (DÙNG ĐỂ VÀO ĐIỀU KHIỂN OBS):"
-                Get-Content rdp_public.log
-                echo "---------------------------------------------------------------"
-                echo "LIÊN KẾT RTMP (NHẬP VÀO TAY CẦM DJI MINI 3):"
-                $rtmpRaw = Get-Content rtmp_public.log
-                if ($rtmpRaw) {
-                    $rtmpClean = $rtmpRaw.Replace("https://", "rtmp://").Replace("http://", "rtmp://")
-                    echo "$rtmpClean/live/dji_stream"
-                }
-                echo "==============================================================="
-                break
-            }
-            $timeout -= 3
-        }
-        
-        # Nếu không có link, xuất log lỗi để kiểm tra cấu hình mạng
-        if ($timeout -le 0) {
-            echo "--- LOG LỖI HỆ THỐNG ---"
-            if (Test-Path rdp_err.log) { Get-Content rdp_err.log }
-            if (Test-Path rtmp_err.log) { Get-Content rtmp_err.log }
+        # Đọc dữ liệu để in thông tin kết nối trực tiếp ra màn hình log
+        if (Test-Path tmate.log) {
+            echo "=================== THÔNG TIN ĐƯỜNG TRUYỀN CỦA BẠN ==================="
+            Get-Content tmate.log
+            echo "======================================================================"
         }
         
         # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
