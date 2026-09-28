@@ -43,36 +43,27 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (SỬA LỖI TERMINAL)
+    - name: Start Network Services Gateway (GỘP KẾT NỐI)
       run: |
         echo "----------------------------------------------------------------------"
         echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN CÔNG KHAI QUA SERVEO..."
         echo "----------------------------------------------------------------------"
         
-        # ĐÃ SỬA: Thêm cờ -n -N -T để triệt tiêu lỗi Pseudo-terminal trong môi trường không giao diện
-        # Xuất dữ liệu trực tiếp ra file log để theo dõi tiến trình cấp link
-        Start-Process ssh -ArgumentList "-n -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:3389 serveo.net" -RedirectStandardOutput "rdp_link.log" -RedirectStandardError "rdp_err.log"
-        Start-Process ssh -ArgumentList "-n -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:1935 serveo.net" -RedirectStandardOutput "rtmp_link.log" -RedirectStandardError "rtmp_err.log"
+        # Đugb: Gộp chung RDP (3389) và RTMP (1935) vào 1 kết nối duy nhất để tránh bị chặn cổng
+        # Ép in thông tin kết nối trực tiếp ra file log hệ thống bằng cấu hình đa luồng
+        Start-Process ssh -ArgumentList "-n -N -T -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 0:localhost:3389 -R 0:localhost:1935 serveo.net" -RedirectStandardError "serveo_gateway.log"
         
-        # Vòng lặp chờ tối đa 30 giây để kiểm tra và in link kết nối ra màn hình log
-        $timeout = 30
+        # Vòng lặp chờ 15 giây để Serveo phản hồi và gán địa chỉ IP Public
+        $timeout = 15
         while ($timeout -gt 0) {
-            Start-Sleep -Seconds 2
-            if ((Test-Path rdp_link.log) -and (Get-Content rdp_link.log)) {
+            Start-Sleep -Seconds 3
+            if ((Test-Path serveo_gateway.log) -and (Get-Content serveo_gateway.log)) {
                 echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
-                Get-Content rdp_link.log
-                Get-Content rtmp_link.log
+                Get-Content serveo_gateway.log
                 echo "==============================================================="
                 break
             }
-            $timeout -= 2
-        }
-        
-        # Nếu lỗi xảy ra, in log lỗi để kiểm tra cấu hình mạng
-        if ($timeout -le 0) {
-            echo "--- LOG LỖI HỆ THỐNG (ĐỂ KIỂM TRA) ---"
-            if (Test-Path rdp_err.log) { Get-Content rdp_err.log }
-            if (Test-Path rtmp_err.log) { Get-Content rtmp_err.log }
+            $timeout -= 3
         }
         
         # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
