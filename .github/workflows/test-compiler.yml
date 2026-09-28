@@ -43,20 +43,20 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (SỬA LỖI FLAG LOCALXPOSE)
+    - name: Start Network Services Gateway (SỬA LỖI BIẾN XÁC THỰC)
       run: |
         echo "----------------------------------------------------------------------"
         echo "HỆ THỐNG ĐANG KHỞI TẠO ĐƯỜNG TRUYỀN QUA LOCALXPOSE..."
         echo "----------------------------------------------------------------------"
         
-        # Đ FIXED: Nạp mã xác thực vào biến môi trường hệ thống Windows để lướt qua lỗi flag nhận diện
-        $env:LOCALXPOSE_ACCESS_TOKEN = "${{ secrets.LOCALXPOSE_TOKEN }}"
+        # Đ FIXED: Sửa tên biến môi trường thành LOCLX_ACCESS_TOKEN theo đúng chuẩn tài liệu nhà phát hành
+        $env:LOCLX_ACCESS_TOKEN = "${{ secrets.LOCALXPOSE_TOKEN }}"
         
-        # Sử dụng đúng các tham số -t (--to) và -g (--region) trích xuất từ bảng OPTIONS trong log của bạn
+        # Kích hoạt hầm mạng công khai TCP hướng máy chủ Singapore (ap) về Việt Nam mượt nhất
         Start-Process loclx -ArgumentList "tunnel tcp -t 3389 -g ap" -RedirectStandardOutput "rdp_tunnel.log" -RedirectStandardError "rdp_err.log"
         Start-Process loclx -ArgumentList "tunnel tcp -t 1935 -g ap" -RedirectStandardOutput "rtmp_tunnel.log" -RedirectStandardError "rtmp_err.log"
         
-        # Chờ 15 giây để hệ thống LocalXpose đồng bộ cụm máy chủ khu vực Châu Á
+        # Chờ 15 giây để hệ thống máy chủ đám mây LocalXpose thiết lập cổng Public
         Start-Sleep -Seconds 15
         
         echo "=================== ĐỊA CHỈ KẾT NỐI CHÍNH THỨC CỦA BẠN ==================="
@@ -66,11 +66,9 @@ jobs:
         echo "--- THÔNG TIN ĐƯỜNG HẦM RTMP (NHẬP VÀO TAY CẦM DJI MINI 3): ---"
         if (Test-Path rtmp_tunnel.log) {
             $rtmpRaw = Get-Content rtmp_tunnel.log
-            echo "Địa chỉ thô: $rtmpRaw"
-            echo "Mẹo: Hãy copy địa chỉ IP/Tên miền dạng X.X.X.X:YYYYY hoặc ap.loclx.io:YYYYY hiện ở trên,"
-            echo "rồi viết lại thành rtmp://<địa_chỉ_đó>/live/dji_stream để điền vào drone."
+            echo "Dia chi tho: $rtmpRaw"
         }
-        ==========================================================================
+        echo "=========================================================================="
         echo "--- KÊNH KIỂM TRA LOG HỆ THỐNG (NẾU CÓ LỖI) ---"
         if (Test-Path rdp_err.log) { Get-Content rdp_err.log }
         if (Test-Path rtmp_err.log) { Get-Content rtmp_err.log }
