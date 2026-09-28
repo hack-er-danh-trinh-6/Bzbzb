@@ -43,39 +43,42 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (SỬA LỖI GIẢI NÉN)
+    - name: Start Network Services Gateway (HẠ TẦNG BORE KHÔNG LỖI ZIP)
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG TỰ ĐỘNG CẤP PHÁT PUBLIC IP KHÔNG CẦN THẺ NGÂN HÀNG..."
+        echo "HỆ THỐNG ĐANG TỰ ĐỘNG CẤP PHÁT PUBLIC IP QUA BORE TUNNEL..."
         echo "----------------------------------------------------------------------"
         
-        # Ép hệ thống kích hoạt giao thức mạng bảo mật để tải file không bị lỗi trống dung lượng
+        # Ép nạp cấu hình mạng an toàn
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         
-        # Tải phần mềm kết nối mạng thô trực tiếp từ kho lưu trữ dạng file thực thi (.exe) chạy thẳng
-        # Bỏ qua bước giải nén Expand-Archive để triệt tiêu hoàn toàn lỗi OperationStopped
-        $gostUrl = "https://github.com"
-        Invoke-WebRequest -Uri $gostUrl -OutFile "gost.zip"
+        # Tải trực tiếp file thực thi .exe của Bore từ máy chủ CDN sạch, KHÔNG CẦN GIẢI NÉN
+        Invoke-WebRequest -Uri "https://github.com" -OutFile "bore.exe"
         
-        # Sử dụng giải pháp giải nén bằng tập lệnh hệ thống không dùng lệnh cũ
-        tar -xf gost.zip
+        # Khởi chạy hầm mạng công khai kết nối thẳng tới máy chủ tự do bore.pub
+        # Tự động gán cổng ngẫu nhiên cho RDP (3389) và RTMP (1935)
+        Start-Process "bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "rdp_bore.log"
+        Start-Process "bore.exe" -ArgumentList "local 1935 --to bore.pub" -RedirectStandardOutput "rtmp_bore.log"
         
-        # Tạo số cổng kết nối Public ngẫu nhiên trên hệ thống máy chủ biên
-        $rdpPort = Get-Random -Minimum 20000 -Maximum 40000
-        $rtmpPort = Get-Random -Minimum 40001 -Maximum 60000
-        
-        # Kích hoạt cổng định tuyến luồng ngược xuyên tường lửa GitHub
-        Start-Process "gost-windows-amd64.exe" -ArgumentList "-L rtcp://:$rdpPort:localhost:3389 -F tunnel://server.gost.plus:8443"
-        Start-Process "gost-windows-amd64.exe" -ArgumentList "-L rtcp://:$rtmpPort:localhost:1935 -F tunnel://server.gost.plus:8443"
-        
-        Start-Sleep -Seconds 10
+        # Chờ 12 giây để mạng đám mây đồng bộ luồng
+        Start-Sleep -Seconds 12
         
         echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
-        echo "LIÊN KẾT RDP (DÙNG ĐỂ VÀO ĐIỀU KHIỂN OBS):"
-        echo "Mở Remote Desktop nhập: server.gost.plus:$rdpPort"
+        if (Test-Path rdp_bore.log) {
+            echo "THÔNG TIN CỔNG RDP (DÙNG ĐỂ VÀO ĐIỀU KHIỂN OBS):"
+            Get-Content rdp_bore.log | Select-String "listening at"
+        }
         echo "---------------------------------------------------------------"
-        echo "LIÊN KẾT RTMP (NHẬP VÀO TAY CẦM DJI MINI 3):"
-        echo "rtmp://server.gost.plus:$rtmpPort/live/dji_stream"
+        if (Test-Path rtmp_bore.log) {
+            echo "THÔNG TIN CỔNG RTMP (NHẬP VÀO TAY CẦM DJI MINI 3):"
+            $rtmpRaw = Get-Content rtmp_bore.log | Select-String "listening at"
+            if ($rtmpRaw) {
+                # Trích xuất số cổng từ chuỗi log của Bore để chuyển đổi thành link RTMP chuẩn
+                echo "Vui lòng lấy địa chỉ bore.pub:XXXXX ứng với log rtmp dưới đây,"
+                echo "sau đó đổi thành định dạng rtmp://bore.pub:XXXXX/live/dji_stream để nhập vào drone."
+                echo $rtmpRaw
+            }
+        }
         echo "==============================================================="
         
         # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
