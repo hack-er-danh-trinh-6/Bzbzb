@@ -16,9 +16,9 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Install OBS Studio
+      - name: Install OBS Studio and PuTTY Plink
         shell: pwsh
-        run: choco install obs-studio -y --no-progress
+        run: choco install obs-studio putty -y --no-progress
 
       - name: Configure Windows Remote Desktop
         shell: pwsh
@@ -61,21 +61,41 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $sshCommand = Get-Command ssh.exe -ErrorAction Stop
+          $plinkCommand = Get-Command plink.exe -ErrorAction Stop
           $attempt = 0
+          $maxAttempts = 8
+          $passwordFile = Join-Path $env:RUNNER_TEMP 'pinggy-auth.txt'
+          Set-Content -Path $passwordFile -Value '0000' -NoNewline -Encoding ascii
+          $plinkArgs = @(
+            '-ssh',
+            '-P', '443',
+            '-R', '0:localhost:3389',
+            '-hostkey', 'SHA256:nFd5rfJMGuZXvfeRzJ/BtT3TfksAxTWMajcrHRcI7AM',
+            '-pwfile', $passwordFile,
+            '-t',
+            '-batch',
+            '-no-antispoof',
+            '-v',
+            'auth+tcp@free.pinggy.io'
+          )
 
           Write-Host 'WARNING: This forwards RDP (TCP 3389) to a public TCP endpoint. Only use the endpoint for your own session.'
           Write-Host 'The free endpoint is temporary and may change after reconnecting. Use the newest tcp://hostname:port printed below.'
           Write-Host 'This workflow is manual-only and will stop when the GitHub-hosted job ends (maximum 6 hours).'
+          Write-Host 'Pinggy auth mode uses its documented dummy password 0000; this is not the Windows RDP password.'
 
-          $maxAttempts = 8
-          while ($attempt -lt $maxAttempts) {
-            $attempt++
-            Write-Host "Connecting Pinggy TCP tunnel (attempt $attempt)..."
-            & $sshCommand.Source -tt -p 443 -R0:localhost:3389 -v -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o ExitOnForwardFailure=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 tcp@free.pinggy.io
-            $sshExitCode = $LASTEXITCODE
-            Write-Host "Pinggy connection ended with exit code $sshExitCode. Retrying in 5 seconds; the next endpoint may be different."
-            Start-Sleep -Seconds 5
+          try {
+            while ($attempt -lt $maxAttempts) {
+              $attempt++
+              Write-Host "Connecting Pinggy TCP tunnel (attempt $attempt)..."
+              & $plinkCommand.Source @plinkArgs
+              $plinkExitCode = $LASTEXITCODE
+              Write-Host "Pinggy connection ended with exit code $plinkExitCode. Retrying in 5 seconds; the next endpoint may be different."
+              Start-Sleep -Seconds 5
+            }
+
+            throw "Pinggy tunnel failed to remain connected after $maxAttempts attempts. Review the Plink diagnostics above."
           }
-
-          throw "Pinggy tunnel failed to remain connected after $maxAttempts attempts. Review the SSH diagnostics above."
+          finally {
+            Remove-Item -Path $passwordFile -Force -ErrorAction SilentlyContinue
+          }
