@@ -44,7 +44,7 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Start Network Services Gateway (SỬA LỖI 0X104)
+    - name: Start Network Services Gateway (SỬA LỖI WIN32 APPLICATION)
       run: |
         echo "----------------------------------------------------------------------"
         echo "HỆ THỐNG ĐANG TỰ ĐỘNG CẤP PHÁT PUBLIC IP KHÔNG CẦN THẺ NGÂN HÀNG..."
@@ -53,29 +53,37 @@ jobs:
         # Cài đặt bộ công cụ LocalTunnel mở cổng TCP không cần tài khoản mạng công khai
         npm install -g localtunnel
         
-        # Khởi chạy cổng kết nối trực tiếp cho RDP (3389) và RTMP (1935)
-        Start-Process lt -ArgumentList "--port 3389" -RedirectStandardOutput "rdp_public.log"
-        Start-Process lt -ArgumentList "--port 1935" -RedirectStandardOutput "rtmp_public.log"
+        # Đfixed: Khởi chạy lệnh qua môi trường cmd /c npx để Windows thực thi script Node.js chính xác
+        Start-Process cmd -ArgumentList "/c npx localtunnel --port 3389" -RedirectStandardOutput "rdp_public.log" -RedirectStandardError "rdp_err.log"
+        Start-Process cmd -ArgumentList "/c npx localtunnel --port 1935" -RedirectStandardOutput "rtmp_public.log" -RedirectStandardError "rtmp_err.log"
         
         # Chờ 15 giây để máy chủ phân bổ cụm tên miền Public hoàn toàn miễn phí
-        Start-Sleep -Seconds 15
+        $timeout = 15
+        while ($timeout -gt 0) {
+            Start-Sleep -Seconds 3
+            if ((Test-Path rdp_public.log) -and (Get-Content rdp_public.log)) {
+                echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
+                echo "LIÊN KẾT RDP (DÙNG ĐỂ VÀO ĐIỀU KHIỂN OBS):"
+                Get-Content rdp_public.log
+                echo "---------------------------------------------------------------"
+                echo "LIÊN KẾT RTMP (NHẬP VÀO TAY CẦM DJI MINI 3):"
+                $rtmpRaw = Get-Content rtmp_public.log
+                if ($rtmpRaw) {
+                    $rtmpClean = $rtmpRaw.Replace("https://", "rtmp://").Replace("http://", "rtmp://")
+                    echo "$rtmpClean/live/dji_stream"
+                }
+                echo "==============================================================="
+                break
+            }
+            $timeout -= 3
+        }
         
-        echo "=================== ĐỊA CHỈ KẾT NỐI CỦA BẠN ==================="
-        if (Test-Path rdp_public.log) {
-            $rdpRaw = Get-Content rdp_public.log
-            # Định dạng và in địa chỉ tên miền để copy thẳng vào Remote Desktop
-            echo "LIÊN KẾT RDP (DÙNG ĐỂ VÀO ĐIỀU KHIỂN OBS):"
-            echo $rdpRaw
+        # Nếu không có link, xuất log lỗi để kiểm tra cấu hình mạng
+        if ($timeout -le 0) {
+            echo "--- LOG LỖI HỆ THỐNG ---"
+            if (Test-Path rdp_err.log) { Get-Content rdp_err.log }
+            if (Test-Path rtmp_err.log) { Get-Content rtmp_err.log }
         }
-        echo "---------------------------------------------------------------"
-        if (Test-Path rtmp_public.log) {
-            $rtmpRaw = Get-Content rtmp_public.log
-            # Chuyển đổi giao thức hiển thị sang rtmp dành cho thiết bị DJI Mini 3
-            $rtmpClean = $rtmpRaw.Replace("https://", "rtmp://").Replace("http://", "rtmp://")
-            echo "LIÊN KẾT RTMP (NHẬP VÀO TAY CẦM DJI MINI 3):"
-            echo "$rtmpClean/live/dji_stream"
-        }
-        echo "==============================================================="
         
         # Giữ máy ảo Windows Server hoạt động liên tục trong 6 tiếng để thực hiện Livestream
         Start-Sleep -Seconds 21600
