@@ -14,13 +14,13 @@ jobs:
     steps:
     - name: Cài đặt phần mềm Hệ thống (Chocolatey)
       run: |
-        # Tự động cài đặt OBS Studio và AnyDesk phiên bản Windows mới nhất
         choco install obs-studio anydesk -y
 
     - name: Cấu hình Mật khẩu truy cập AnyDesk ngầm
       run: |
         Write-Host "Setting up AnyDesk unattended access password..."
-        # Thiết lập mật khẩu kết nối cố định là: RdpPassword2026!
+        # Đảm bảo service của AnyDesk đã chạy trước khi set mật khẩu
+        Start-Service -Name "AnyDesk" -ErrorAction SilentlyContinue
         echo RdpPassword2026! | & "C:\Program Files (x86)\AnyDesk\AnyDesk.exe" --set-password
         
     - name: Deploy Light RTMP Server
@@ -40,24 +40,40 @@ jobs:
             Write-Host "Software emulation pipeline active."
         }
 
-    - name: Kích hoạt AnyDesk và Lấy mã ID kết nối
+    - name: Kích hoạt AnyDesk và Quét mã ID liên tục
       run: |
         echo "----------------------------------------------------------------------"
-        echo "HỆ THỐNG ĐANG KHỞI CHẠY ANYDESK TRÊN MÁY ẢO..."
+        echo "HỆ THỐNG ĐANG KHỞI CHẠY ANYDESK VÀ ĐỢI MÁY CHỦ CẤP MÃ ID..."
         echo "----------------------------------------------------------------------"
         
-        # Khởi chạy dịch vụ AnyDesk và ép xuất mã số ID kết nối ra file log tạm thời
-        & "C:\Program Files (x86)\AnyDesk\AnyDesk.exe" --get-id > anydesk_id.log
+        # Đường dẫn file chạy AnyDesk chính thức
+        $anydeskPath = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
         
-        # Chờ 8 giây để hệ thống AnyDesk toàn cầu cấp phát ID định danh máy ảo
-        Start-Sleep -Seconds 8
+        # Vòng lặp quét liên tục trong tối đa 60 giây để chờ lấy bằng được ID
+        $timeout = 60
+        $anydeskId = ""
+        
+        while ($timeout -gt 0) {
+            # Gọi lệnh lấy ID của AnyDesk và lưu ra biến tạm
+            $anydeskId = & $anydeskPath --get-id 2>$null
+            
+            # Làm sạch chuỗi dữ liệu nhận được (xóa khoảng trắng hoặc ký tự xuống dòng)
+            if ($anydeskId) { $anydeskId = $anydeskId.Trim() }
+            
+            # Nếu đã có chuỗi ID (thường gồm 9 chữ số), thoát vòng lặp
+            if ($anydeskId -match '^\d+$' -or ($anydeskId -and $anydeskId.Length -ge 9)) {
+                break
+            }
+            
+            Start-Sleep -Seconds 2
+            $timeout -= 2
+        }
         
         echo "=================== THÔNG TIN KẾT NỐI ANYDESK ==================="
-        if (Test-Path anydesk_id.log) {
-            $id = Get-Content anydesk_id.log
-            echo "MÃ SỐ ID ANYDESK MÁY ẢO CỦA BẠN LÀ: $id"
+        if ($anydeskId) {
+            echo "MÃ SỐ ID ANYDESK MÁY ẢO CỦA BẠN LÀ: $anydeskId"
         } else {
-            echo "Vui lòng đợi vài giây hoặc chạy lại lệnh để quét ID..."
+            echo "LỖI: Máy chủ AnyDesk phản hồi quá chậm. Vui lòng bấm vào nút 'Re-run jobs' trên GitHub để thử lại."
         }
         echo "MẬT KHẨU TRUY CẬP (PASSWORD): RdpPassword2026!"
         echo "================================================================="
