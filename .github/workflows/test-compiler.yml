@@ -12,7 +12,7 @@ jobs:
     timeout-minutes: 360
 
     env:
-      NGROK_AUTHTOKEN: 3JzngNVGSareWqldnMZrgiigyIg_67Xh9tQHBHvrSFhfgnYut
+      NGROK_AUTHTOKEN: 3K20Gthgj6N53YFoyFxzjPPVOmN_2qTbz6Q86V5CZMg4oGza6
       RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
 
     steps:
