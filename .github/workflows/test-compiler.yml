@@ -2,6 +2,10 @@ name: Automated-DJI-Streaming-Pipeline
 
 on:
   workflow_dispatch:
+    inputs:
+      crd_code:
+        description: 'Mã code từ remotedesktop.google.com/headless'
+        required: true
 
 permissions:
   contents: read
@@ -12,16 +16,52 @@ jobs:
     timeout-minutes: 360
 
     env:
-      NGROK_AUTHTOKEN: 3K20Gthgj6N53YFoyFxzjPPVOmN_2qTbz6Q86V5CZMg4oGza6
+      NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
       RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
 
     steps:
-      - name: Install ngrok and OBS Studio
+      - name: Install and register Chrome Remote Desktop
+        shell: pwsh
+        env:
+          CRD_CODE: ${{ inputs.crd_code }}
+          CRD_PIN: "123456"
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CRD_CODE)) {
+            throw "Thiếu crd_code."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:CRD_PIN) -or $env:CRD_PIN.Length -lt 6) {
+            throw "Secret CRD_PIN thiếu hoặc ngắn hơn 6 ký tự."
+          }
+
+          Invoke-WebRequest `
+            -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" `
+            -OutFile "$env:RUNNER_TEMP\crd.msi"
+
+          Start-Process msiexec.exe `
+            -ArgumentList "/i `"$env:RUNNER_TEMP\crd.msi`" /qn /norestart" `
+            -Wait
+
+          $exe = "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Không tìm thấy remoting_start_host.exe sau khi cài."
+          }
+
+          & $exe `
+            --code="$env:CRD_CODE" `
+            --redirect-url="https://remotedesktop.google.com/_/oauthredirect" `
+            --name=$Env:COMPUTERNAME `
+            --pin="$env:CRD_PIN"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Đăng ký Chrome Remote Desktop thất bại (mã hết hạn hoặc đã dùng)."
+          }
+
+      - name: Install tools
         shell: pwsh
         run: |
           choco install ngrok obs-studio -y --no-progress
           if ($LASTEXITCODE -ne 0) {
-            throw "Cài ngrok hoặc OBS Studio thất bại."
+            throw "Cài đặt thất bại."
           }
 
           if (-not (Get-Command ngrok -ErrorAction SilentlyContinue)) {
@@ -61,6 +101,7 @@ jobs:
 
           Enable-LocalUser -Name 'runneradmin'
 
+      # Step này phải ở CUỐI vì ngrok chạy mãi không kết thúc.
       - name: Create ngrok TCP config and start tunnel
         shell: pwsh
         run: |
@@ -92,7 +133,6 @@ jobs:
             throw "ngrok config check thất bại."
           }
 
-          # Giữ tiến trình chạy để tunnel còn hoạt động.
           # Xem log bước này để lấy địa chỉ tcp://... do ngrok cấp.
           ngrok start --config $configPath --log stdout --log-format logfmt rdp-tunnel
           if ($LASTEXITCODE -ne 0) {
