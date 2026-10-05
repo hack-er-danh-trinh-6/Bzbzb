@@ -59,8 +59,8 @@ jobs:
       - name: Install tools and Android Emulator (LDPlayer)
         shell: pwsh
         run: |
-          # Cài đặt ngrok, OBS Studio và LDPlayer tự động qua Chocolatey
-          choco install ngrok obs-studio ldplayer -y --no-progress
+          # 1. Cài đặt ngrok và OBS Studio qua Chocolatey
+          choco install ngrok obs-studio -y --no-progress
           if ($LASTEXITCODE -ne 0) {
             throw "Cài đặt công cụ thất bại."
           }
@@ -69,7 +69,17 @@ jobs:
             throw "Không tìm thấy ngrok sau khi cài."
           }
 
-          Write-Host "Cài đặt thành công toàn bộ công cụ và LDPlayer!"
+          # 2. Tải và cài đặt LDPlayer 9 từ CDN chính thức
+          Write-Host "Đang tải LDPlayer 9..."
+          $ldInstaller = "$env:RUNNER_TEMP\LDPlayerInstaller.exe"
+          $url = "https://encdn.ldmnq.com/other/en/LDPlayer9_ens_com_ld.exe"
+          
+          Invoke-WebRequest -Uri $url -OutFile $ldInstaller -UserAgent "Mozilla/5.0"
+
+          Write-Host "Đang cài đặt LDPlayer 9..."
+          Start-Process -FilePath $ldInstaller -ArgumentList "/s" -Wait
+
+          Write-Host "Hoàn tất cài đặt LDPlayer 9!"
 
       - name: Enable Remote Desktop
         shell: pwsh
@@ -104,7 +114,6 @@ jobs:
 
           Enable-LocalUser -Name 'runneradmin'
 
-      # Step này ở CUỐI để duy trì kết nối
       - name: Create ngrok TCP config and start tunnel
         shell: pwsh
         run: |
@@ -135,7 +144,6 @@ jobs:
             throw "ngrok config check thất bại."
           }
 
-          # Xem log bước này để lấy địa chỉ tcp://... do ngrok cấp.
           ngrok start --config $configPath --log stdout --log-format logfmt rdp-tunnel
           if ($LASTEXITCODE -ne 0) {
             throw "ngrok thoát với lỗi."
