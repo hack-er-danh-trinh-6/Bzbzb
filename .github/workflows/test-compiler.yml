@@ -1,4 +1,4 @@
-name: Automated-DJI-Streaming-Pipeline
+Name: Automated-DJI-Streaming-Pipeline
 
 on:
   workflow_dispatch:
@@ -56,17 +56,28 @@ jobs:
             throw "Đăng ký Chrome Remote Desktop thất bại (mã hết hạn hoặc đã dùng)."
           }
 
-      - name: Install tools
+      - name: Install tools and Android Emulator (LDPlayer)
         shell: pwsh
         run: |
+          # 1. Cài đặt ngrok và OBS Studio
           choco install ngrok obs-studio -y --no-progress
           if ($LASTEXITCODE -ne 0) {
-            throw "Cài đặt thất bại."
+            throw "Cài đặt công cụ thất bại."
           }
 
           if (-not (Get-Command ngrok -ErrorAction SilentlyContinue)) {
             throw "Không tìm thấy ngrok sau khi cài."
           }
+
+          # 2. Tải và cài đặt LDPlayer 9 (Giả lập Android)
+          Write-Host "Đang tải LDPlayer 9..."
+          $ldInstaller = "$env:RUNNER_TEMP\LDPlayer9.exe"
+          Invoke-WebRequest -Uri "https://encdn.ldmnq.com/download/en/LDPlayer_9.0.exe" -OutFile $ldInstaller
+
+          Write-Host "Đang cài đặt LDPlayer 9 (Chế độ ẩn)..."
+          Start-Process -FilePath $ldInstaller -ArgumentList "/s" -Wait
+
+          Write-Host "Cài đặt LDPlayer hoàn tất!"
 
       - name: Enable Remote Desktop
         shell: pwsh
@@ -101,7 +112,7 @@ jobs:
 
           Enable-LocalUser -Name 'runneradmin'
 
-      # Step này phải ở CUỐI vì ngrok chạy mãi không kết thúc.
+      # Step này ở CUỐI để duy trì kết nối
       - name: Create ngrok TCP config and start tunnel
         shell: pwsh
         run: |
@@ -109,7 +120,7 @@ jobs:
             throw "Thiếu GitHub Actions secret NGROK_AUTHTOKEN."
           }
 
-          $configPath = Join-Path $env:RUNNER_TEMP 'ngrok.yml'
+          $configPath = Join-Path$env:RUNNER_TEMP 'ngrok.yml'
 
           $config = @"
           version: 3
@@ -123,8 +134,7 @@ jobs:
           "@
 
           [System.IO.File]::WriteAllText(
-            $configPath,
-            $config,
+            $configPath,$config,
             [System.Text.UTF8Encoding]::new($false)
           )
 
