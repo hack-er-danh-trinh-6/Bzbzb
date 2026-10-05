@@ -1,4 +1,4 @@
-name: Automated-DJI-Streaming-Pipeline
+name: Automated-DJI-Streaming-Pipelineh
 
 on:
   workflow_dispatch:
