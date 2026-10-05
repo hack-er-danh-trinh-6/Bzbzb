@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       crd_code:
-        description: 'Mã code từ remotedesktop.google.com/headless'
+        description: "Chrome Remote Desktop registration code"
         required: true
+        type: string
 
 permissions:
   contents: read
@@ -16,65 +17,72 @@ jobs:
     timeout-minutes: 360
 
     env:
-      NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
       RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+      NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
 
     steps:
       - name: Install and register Chrome Remote Desktop
         shell: pwsh
         env:
           CRD_CODE: ${{ inputs.crd_code }}
-          CRD_PIN: "123456"
+          CRD_PIN: ${{ secrets.CRD_PIN }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:CRD_CODE)) {
-            throw "Thiếu crd_code."
+            throw "Missing CRD registration code."
           }
+
           if ([string]::IsNullOrWhiteSpace($env:CRD_PIN) -or $env:CRD_PIN.Length -lt 6) {
-            throw "Secret CRD_PIN thiếu hoặc ngắn hơn 6 ký tự."
+            throw "Configure the CRD_PIN secret with at least 6 characters."
           }
+
+          $msi = Join-Path $env:RUNNER_TEMP "crd.msi"
 
           Invoke-WebRequest `
             -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" `
-            -OutFile "$env:RUNNER_TEMP\crd.msi"
+            -OutFile $msi
 
-          Start-Process msiexec.exe `
-            -ArgumentList "/i `"$env:RUNNER_TEMP\crd.msi`" /qn /norestart" `
-            -Wait
+          $process = Start-Process msiexec.exe `
+            -ArgumentList "/i `"$msi`" /qn /norestart" `
+            -Wait -PassThru
 
-          $exe = "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
+          if ($process.ExitCode -notin @(0, 3010)) {
+            throw "Chrome Remote Desktop installation failed."
+          }
+
+          $exe = "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
+
           if (-not (Test-Path $exe)) {
-            throw "Không tìm thấy remoting_start_host.exe sau khi cài."
+            throw "Chrome Remote Desktop host executable not found."
           }
 
           & $exe `
-            --code="$env:CRD_CODE" `
-            --redirect-url="https://remotedesktop.google.com/_/oauthredirect" `
-            --name=$Env:COMPUTERNAME `
-            --pin="$env:CRD_PIN"
+            "--code=$env:CRD_CODE" `
+            "--redirect-url=https://remotedesktop.google.com/_/oauthredirect" `
+            "--name=$env:COMPUTERNAME" `
+            "--pin=$env:CRD_PIN"
 
           if ($LASTEXITCODE -ne 0) {
-            throw "Đăng ký Chrome Remote Desktop thất bại (mã hết hạn hoặc đã dùng)."
+            throw "Chrome Remote Desktop registration failed."
           }
 
-      - name: Install tools and Android Studio
+      - name: Install OBS Studio, Android Studio and ngrok
         shell: pwsh
         run: |
           choco install ngrok obs-studio androidstudio -y --no-progress
+
           if ($LASTEXITCODE -ne 0) {
-            throw "Cài đặt công cụ thất bại."
+            throw "Tool installation failed."
           }
 
           if (-not (Get-Command ngrok -ErrorAction SilentlyContinue)) {
-            throw "Không tìm thấy ngrok sau khi cài."
+            throw "ngrok was not found."
           }
 
-          Write-Host "Cài đặt hoàn tất ngrok, OBS Studio và Android Studio!"
-
-      - name: Enable Remote Desktop
+      - name: Enable Windows Remote Desktop
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace($env:RDP_PASSWORD)) {
-            throw "Thiếu GitHub Actions secret RDP_PASSWORD."
+            throw "Configure the RDP_PASSWORD GitHub secret."
           }
 
           Set-ItemProperty `
@@ -89,51 +97,54 @@ jobs:
 
           Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'
 
-          $password = ConvertTo-SecureString $env:RDP_PASSWORD -AsPlainText -Force
-          $user = Get-LocalUser -Name 'runneradmin' -ErrorAction SilentlyContinue
+          $password = ConvertTo-SecureString `
+            $env:RDP_PASSWORD -AsPlainText -Force
+
+          $user = Get-LocalUser -Name 'runneradmin' `
+            -ErrorAction SilentlyContinue
 
           if ($null -eq $user) {
             New-LocalUser `
               -Name 'runneradmin' `
               -Password $password `
-              -Description 'Temporary RDP user for this workflow'
+              -Description 'Temporary workflow account'
           } else {
             Set-LocalUser -Name 'runneradmin' -Password $password
           }
 
           Enable-LocalUser -Name 'runneradmin'
 
-      - name: Create ngrok TCP config and start tunnel
+      - name: Start ngrok TCP tunnel
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace($env:NGROK_AUTHTOKEN)) {
-            throw "Thiếu GitHub Actions secret NGROK_AUTHTOKEN."
+            throw "Configure the NGROK_AUTHTOKEN GitHub secret."
           }
 
-          $configPath = Join-Path$env:RUNNER_TEMP 'ngrok.yml'
+          $configPath = Join-Path $env:RUNNER_TEMP 'ngrok.yml'
 
           $config = @"
           version: 3
           agent:
             authtoken: $env:NGROK_AUTHTOKEN
-          endpoints:
-            - name: rdp-tunnel
-              url: tcp://
-              upstream:
-                url: 3389
           "@
 
           [System.IO.File]::WriteAllText(
-            $configPath,$config,
+            $configPath,
+            $config,
             [System.Text.UTF8Encoding]::new($false)
           )
 
           ngrok config check --config $configPath
+
           if ($LASTEXITCODE -ne 0) {
-            throw "ngrok config check thất bại."
+            throw "ngrok configuration validation failed."
           }
 
-          ngrok start --config $configPath --log stdout --log-format logfmt rdp-tunnel
-          if ($LASTEXITCODE -ne 0) {
-            throw "ngrok thoát với lỗi."
-          }
+          # Start a TCP tunnel to the Windows RDP port.
+          # Keep the process in the foreground so the workflow
+          # remains active while the tunnel is running.
+          ngrok tcp 3389 `
+            --config $configPath `
+            --log stdout `
+            --log-format logfmt
